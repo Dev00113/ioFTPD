@@ -1,0 +1,200 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.S.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)\r\n"
+    "LANGUAGE 9, 1\r\n"
+    "#pragma code_page(1252)\r\n"
+    "#include ""res\\IoKnock.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""afxres.rc""     // Standard components\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_IOKNOCK_DIALOG DIALOGEX 0, 0, 320, 200
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_MINIMIZEBOX | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_APPWINDOW
+CAPTION "ioKnock GUI"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    EDITTEXT        IDC_PORT_1,152,65,40,14,ES_AUTOHSCROLL | ES_NUMBER
+    EDITTEXT        IDC_PORT_2,152,87,40,14,ES_AUTOHSCROLL | ES_NUMBER
+    EDITTEXT        IDC_PORT_3,152,109,40,14,ES_AUTOHSCROLL | ES_NUMBER
+    EDITTEXT        IDC_PORT_4,152,131,40,14,ES_AUTOHSCROLL | ES_NUMBER
+    EDITTEXT        IDC_PORT_5,152,153,40,14,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "",IDC_CHECK1,"Button",BS_3STATE | WS_DISABLED | WS_TABSTOP,205,67,101,10
+    CONTROL         "",IDC_CHECK2,"Button",BS_3STATE | WS_DISABLED | WS_TABSTOP,205,89,101,10
+    CONTROL         "",IDC_CHECK3,"Button",BS_3STATE | WS_DISABLED | WS_TABSTOP,205,111,101,10
+    CONTROL         "",IDC_CHECK4,"Button",BS_3STATE | WS_DISABLED | WS_TABSTOP,205,133,101,10
+    CONTROL         "",IDC_CHECK5,"Button",BS_AUTO3STATE | WS_DISABLED | WS_TABSTOP,205,155,101,10
+    LTEXT           "#1",IDC_STATIC,129,67,10,8
+    COMBOBOX        IDC_SITE_COMBO,7,25,113,171,CBS_SIMPLE | CBS_AUTOHSCROLL | CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "Delete",IDC_BUTTON_DELETE,70,7,50,14
+    PUSHBUTTON      "Add",IDC_BUTTON_ADD,7,7,50,14
+    EDITTEXT        IDC_HOST,127,29,179,14,ES_AUTOHSCROLL
+    LTEXT           "IP/Name:",IDC_STATIC,128,17,31,8
+    GROUPBOX        "Site:",IDC_GROUP,123,7,190,186
+    LTEXT           "Num",IDC_STATIC,128,50,15,8
+    LTEXT           "Port",IDC_STATIC,152,50,14,8
+    LTEXT           "Status",IDC_STATUS,205,50,101,8,WS_DISABLED
+    PUSHBUTTON      "Save",IDC_BUTTON_SAVE,147,172,50,14
+    PUSHBUTTON      "Knock",IDC_BUTTON_KNOCK,240,172,50,14
+    LTEXT           "#2",IDC_STATIC,129,89,10,8
+    LTEXT           "#3",IDC_STATIC,129,111,10,8
+    LTEXT           "#4",IDC_STATIC,129,133,10,8
+    LTEXT           "#5",IDC_STATIC,129,155,10,8
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,0
+ PRODUCTVERSION 1,0,0,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904e4"
+        BEGIN
+            VALUE "FileDescription", "Simple TCP Knock App"
+            VALUE "FileVersion", "1.0.0.0"
+            VALUE "InternalName", "IoKnock.exe"
+            VALUE "LegalCopyright", "(c) Yil - All rights reserved."
+            VALUE "OriginalFilename", "IoKnock.exe"
+            VALUE "ProductName", "ioKnock"
+            VALUE "ProductVersion", "1.0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1252
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO 
+BEGIN
+    IDD_IOKNOCK_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 313
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 193
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDI_ICON1               ICON                    "gold-knocker.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE 
+BEGIN
+    IDP_SOCKETS_INIT_FAILED "Windows sockets initialization failed."
+END
+
+#endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+LANGUAGE 9, 1
+#pragma code_page(1252)
+#include "res\IoKnock.rc2"  // non-Microsoft Visual C++ edited resources
+#include "afxres.rc"     // Standard components
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+
