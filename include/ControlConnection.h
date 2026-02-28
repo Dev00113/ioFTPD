@@ -32,7 +32,7 @@ typedef struct _COMMAND
 	LPSTR				Command;
 	DWORD				Length;
 
-	DWORD				Idle;
+	ULONGLONG			Idle;
 	BUFFER				In;
 	BUFFER				Out;
 

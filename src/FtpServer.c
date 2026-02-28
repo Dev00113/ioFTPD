@@ -267,8 +267,8 @@ VOID FTP_AcceptInput(LPFTPUSER lpUser)
 				{
 					InterlockedExchange(&FtpSettings.lStringLock, FALSE);
 					//  Calculate time left
-					lTime=Time_DifferenceDW32(lpUser->CommandChannel.Idle,
-						GetTickCount());
+					lTime= Time_DifferenceDW64(lpUser->CommandChannel.Idle,
+						SafeGetTickCount64());
 					if (lTime > FtpSettings.dwIdleTimeOut )
 					{
 						dwTimeOut = 0;
@@ -363,7 +363,7 @@ BOOL FTP_New_Client(PCONNECTION_INFO lpConnection)
 	lpUser->DataChannel.ioSocket.Socket		= INVALID_SOCKET;
 
 	//	Setup Timestamps
-	lpUser->CommandChannel.Idle		= GetTickCount();
+	lpUser->CommandChannel.Idle		= SafeGetTickCount64();
 
 	// don't allow this to switch for already logged in users...
 	lpUser->FtpVariables.bKeepLinksInPath = FtpSettings.bKeepLinksInPath;

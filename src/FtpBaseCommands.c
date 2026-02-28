@@ -83,6 +83,7 @@ static FTPCOMMAND FtpCommand[] = {
   _TEXT("LIST"),  OTHER_CMD, -1, -1,  FTP_List,
   _TEXT("NLST"),  OTHER_CMD, -1, -1,  FTP_Nlist,
   _TEXT("MLSD"),  OTHER_CMD, -1, -1,  FTP_MLSD,
+  _TEXT("MLST"),  OTHER_CMD, -1, -1,  FTP_MLST,   // RFC 3659 Â§7 single-entry listing
   _TEXT("STAT"),  OTHER_CMD, 1, -1,   FTP_Stat,
   _TEXT("STOR"),  OTHER_CMD, 1, -1,   FTP_TransferStore,
   _TEXT("RETR"),  OTHER_CMD, 1, -1,   FTP_TransferRetrieve,
@@ -254,9 +255,13 @@ static BOOL FTP_Features(LPFTPUSER lpUser, IO_STRING *Args)
 		FormatString(&lpUser->CommandChannel.Out, _TEXT(" MDTM YYYYMMDDHHMMSS filename\r\n"));
 	}
 
-  // we don't support OPTS command yet, and FlashFXP sucks with MLSD at the moment, so
-  // accept the MLSD command, but don't advertise we have it
-  // FormatString(&lpUser->CommandChannel.Out, _TEXT(" MLST type*;size*;modify*;UNIX.mode*;UNIX.owner*;UNIX.group*\r\n"));
+  // Per RFC 3659, advertising MLST implies MLSD support as well.
+  // OPTS MLST (fact selection) is not implemented; all facts are active by default.
+  if (!tszSuppressed || !_tcsstr(tszSuppressed, _T("MLST")))
+  {
+      FormatString(&lpUser->CommandChannel.Out,
+          _TEXT(" MLST type*;size*;modify*;UNIX.mode*;UNIX.owner*;UNIX.group*\r\n"));
+  }
 
 	if (!tszSuppressed || !_tcsstr(tszSuppressed, _T("PBSZ")))
 	{
@@ -296,7 +301,7 @@ static BOOL FTP_Features(LPFTPUSER lpUser, IO_STRING *Args)
 		FormatString(&lpUser->CommandChannel.Out, _TEXT(" TVFS\r\n"));
 	}
 
-	if (!tszSuppressed || _tcsstr(tszSuppressed, _T("XCRC filename;start;end")))
+	if (!tszSuppressed || !_tcsstr(tszSuppressed, _T("XCRC filename;start;end")))
 	{
 		FormatString(&lpUser->CommandChannel.Out, _TEXT(" XCRC filename;start;end\r\n"));
 	}
@@ -777,7 +782,10 @@ FTP_Authentication(LPFTPUSER lpUser,
 	tszType  = GetStringIndexStatic(Args, 0);
 	lpService = lpUser->Connection.lpService;
 
-	if (lpService->pSecureCtx && ! _tcsicmp(tszType, _TEXT("TLS")) && lpService->bTlsSupported)
+	// AUTH TLS or AUTH SSL now go down the same TLS path
+	if (lpService->pSecureCtx &&
+		lpService->bTlsSupported &&
+		(!_tcsicmp(tszType, _TEXT("TLS")) || !_tcsicmp(tszType, _TEXT("SSL"))))
 	{
 		//  AUTH TLS
 		if (! Secure_Init_Socket(&lpUser->CommandChannel.Socket, lpService, SSL_ACCEPT))
@@ -792,21 +800,7 @@ FTP_Authentication(LPFTPUSER lpUser,
 		FormatString(&lpUser->CommandChannel.Out, _TEXT("534 %2TError initializing secure socket: %E.%0T\r\n"), GetLastError());
 		return TRUE;
 	}
-	else if (lpService->pSecureCtx && ! _tcsicmp(tszType, "SSL") && lpService->bSslSupported)
-	{
-		//  AUTH SSL
-		if (! Secure_Init_Socket(&lpUser->CommandChannel.Socket, lpService, SSL_ACCEPT))
-		{
-			//  Secure socket initialization successful
-			FormatString(&lpUser->CommandChannel.Out,
-				_TEXT("%s"),_TEXT("234 AUTH SSL successful.\r\n"));
-			lpUser->Connection.dwStatus    |= U_MAKESSL;
-			return FALSE;
-		}
-		//  Secure socket intialization failed
-		FormatString(&lpUser->CommandChannel.Out, _TEXT("%2T534 Error initializing secure socket: %E.%0T\r\n"), GetLastError());
-		return TRUE;
-	}
+
 	//  Unknown AUTH mode
 	FormatString(&lpUser->CommandChannel.Out,
 		_TEXT("504 %5TAUTH %s%0T %2Tunsupported.%0T\r\n"), tszType);
@@ -989,7 +983,7 @@ FTP_RenameTo(LPFTPUSER lpUser,
 				  AdminSize.Progress.lpCommand = &lpUser->CommandChannel;
 				  AdminSize.Progress.tszMultilinePrefix = _T("250-");
 				  AdminSize.Progress.dwDelay  = 10000;
-				  dwInitialTicks = GetTickCount() + AdminSize.Progress.dwDelay;
+				  dwInitialTicks = SafeGetTickCount64() + AdminSize.Progress.dwDelay;
 				  AdminSize.Progress.dwTicks  = dwInitialTicks;
 				  AdminSize.Progress.tszFormatString = _T("Still sizing move... %u dirs, %u files processed, %u access errors.\r\n");
 				  AdminSize.dwDirCount++;
@@ -2434,7 +2428,7 @@ BOOL FTP_Command(LPFTPUSER lpUser)
   tszCommand=lpUser->CommandChannel.Command;
 
   //  Remove OOB
-  if (!_tcsncmp(tszCommand, _TEXT("ÿôÿÿ"), 4)) tszCommand+=4;
+  if (!_tcsncmp(tszCommand, _TEXT("ï¿½ï¿½ï¿½ï¿½"), 4)) tszCommand+=4;
 
   //  Synchronize userfile
   bSync = UserFile_Sync(&lpUser->UserFile);
@@ -2599,7 +2593,7 @@ BOOL FTP_Command(LPFTPUSER lpUser)
 					  while (InterlockedExchange(&FtpSettings.lStringLock, TRUE)) SwitchToThread();
 					  if (!FtpSettings.tszIdleIgnore || (!_tcsstr(FtpSettings.tszIdleIgnore, lpCommand->tszName)))
 					  {
-						  lpUser->CommandChannel.Idle  = GetTickCount();
+						  lpUser->CommandChannel.Idle  = SafeGetTickCount64();
 					  }
 					  InterlockedExchange(&FtpSettings.lStringLock, FALSE);
 				  }

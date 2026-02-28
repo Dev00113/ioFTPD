@@ -29,7 +29,7 @@ typedef struct _TIME_STRUCT {
 DOUBLE Time_Difference(LPTIME_STRUCT lpStartTime, LPTIME_STRUCT lpStopTime);
 VOID Time_Read(LPTIME_STRUCT lpTime);
 INT Time_Compare(LPTIME_STRUCT lpStartTime, LPTIME_STRUCT lpStopTime);
-DWORD Time_DifferenceDW32(DWORD dwStart, DWORD dwStop);
+ULONGLONG Time_DifferenceDW64(ULONGLONG start, ULONGLONG end);
 VOID SystemTimeToLocalTime(LPSYSTEMTIME lpUniversalTime, LPSYSTEMTIME lpLocalTime);
 VOID Time_Duration(LPTSTR tszBuf, DWORD dwSize, time_t tDiff, TCHAR cLast, TCHAR cFirst,
 				   DWORD dwSuffixType, DWORD dwShowZeros, DWORD dwMinWidth, LPTSTR szField);

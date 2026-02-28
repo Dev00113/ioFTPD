@@ -83,7 +83,7 @@ typedef struct _EXCHANGE_REQUEST
 	WORD				  wStatus;		// Request status
 	HANDLE				  hEvent;		// Event handle
 	HANDLE				  hMemory;		// Memory object handle
-	DWORD				  dwTickCount;	// When request was issued
+	ULONGLONG			  dwTickCount;	// When request was issued
 	LPDC_USERFILE_REQUEST lpUserFileReqList[2]; // linked list of open userfile requests
 	LPDC_MESSAGE		  lpMessage;
 

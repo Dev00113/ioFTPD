@@ -19,9 +19,9 @@
  * MA 02110-1301, USA.
  */
 
-#define IO_TCL_MAJOR_VER	8
-#define IO_TCL_MINOR_VER	5
-#define IO_TCL_PATCH_VER	9
+#define IO_TCL_MAJOR_VER	9
+#define IO_TCL_MINOR_VER	0
+#define IO_TCL_PATCH_VER	2
 
 #define TCL_CMD		INT (__cdecl *)(LPVOID, Tcl_Interp *, INT, Tcl_Obj *const *)
 

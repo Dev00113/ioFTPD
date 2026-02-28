@@ -1,3 +1,6 @@
+// Include the version numbering macros from here
+#include "Version.h"
+
 // Microsoft Visual C++ generated resource script.
 //
 #include "resource.h"
@@ -62,8 +65,8 @@ IDI_ICON1               ICON                    "src\\ioFTPD.ico"
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 7,7,3,0
- PRODUCTVERSION 7,7,3,0
+ FILEVERSION IOFTPD_VERSION_MAJOR,IOFTPD_VERSION_MINOR,IOFTPD_VERSION_PATCH,IOFTPD_VERSION_BUILD
+ PRODUCTVERSION IOFTPD_VERSION_MAJOR,IOFTPD_VERSION_MINOR,IOFTPD_VERSION_PATCH,IOFTPD_VERSION_BUILD
  FILEFLAGSMASK 0x37L
 #ifdef _DEBUG
  FILEFLAGS 0x21L
@@ -79,13 +82,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "ioFTPD Server"
-            VALUE "FileVersion", "7, 7, 3, 0"
+            VALUE "FileVersion", IOFTPD_VERSION_STRING
             VALUE "InternalName", "ioFTPD"
-            VALUE "LegalCopyright", "GNU Open Source"
             VALUE "OriginalFilename", "ioFTPD.exe"
             VALUE "ProductName", "ioFTPD Server"
-            VALUE "ProductVersion", "7, 7, 3, 0"
-            VALUE "SpecialBuild", "Yil"
+            VALUE "ProductVersion", IOFTPD_VERSION_STRING
+            VALUE "SpecialBuild", "Dev00113"
         END
     END
     BLOCK "VarFileInfo"
@@ -93,6 +95,7 @@ BEGIN
         VALUE "Translation", 0x409, 1200
     END
 END
+
 
 #endif    // English (U.S.) resources
 /////////////////////////////////////////////////////////////////////////////

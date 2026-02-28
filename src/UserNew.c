@@ -570,7 +570,17 @@ static INT32 User_Register(LPUSER_MODULE lpModule, LPTSTR tszUserName, LPUSERFIL
   //  Reset contents of parent
   ZeroMemory(lpParentUserFile, sizeof(PARENT_USERFILE));
   //  Copy userfile contents
-  if (lpUserFile) CopyMemory(lpMemory, lpUserFile, sizeof(USERFILE));
+  if (lpUserFile)
+  {
+    CopyMemory(lpMemory, lpUserFile, sizeof(USERFILE));
+    // The caller (e.g. User_StandardCreate) owns lpInternal (the USERFILE_CONTEXT /
+    // file handle).  The shared copy must NOT share that pointer: if the caller's
+    // error path calls User_StandardClose() it would free the context while the
+    // registered shared copy still holds a reference, causing a use-after-free on
+    // the next User_StandardWrite.  Clear it here; the registered copy acquires its
+    // own file handle the first time it is opened via User_Open / User_StandardOpen.
+    ((LPUSERFILE)lpMemory)->lpInternal = NULL;
+  }
   //  Move userfile inside parent
   lpParentUserFile->lpUserFile   = (LPUSERFILE)lpMemory;
   lpParentUserFile->hPrimaryLock = hEvent;
@@ -818,8 +828,12 @@ BOOL UserFile_Unlock(LPUSERFILE *lpUserFile, DWORD dwFlags)
     //  Release secondary lock
     InterlockedExchange(&lpParentUserFile->lSecondaryLock, FALSE);
 
-	// update IP mask DB if IP data changed
-	if (memcmp(lpUserFile[0]->Ip, lpParentUserFile->lpUserFile->Ip, sizeof(lpUserFile[0]->Ip)))
+	// update IP mask DB if IP data changed.
+	// lpMemory holds the OLD userfile pointer (captured before the secondary lock).
+	// lpParentUserFile->lpUserFile now points to lpUserFile[0] (same allocation after
+	// AllocateShared increments the refcount), so comparing against it would always
+	// return 0.  Compare against lpMemory (old data) instead.
+	if (memcmp(lpUserFile[0]->Ip, ((LPUSERFILE)lpMemory)->Ip, sizeof(lpUserFile[0]->Ip)))
 	{
 		UserIpHostMaskUpdate(*lpUserFile);
 	}

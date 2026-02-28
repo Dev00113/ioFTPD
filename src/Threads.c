@@ -119,12 +119,8 @@ BOOL Process_SetPriority(LPTSTR tszPriority, HANDLE hProcess)
 }
 
 
-/*
 
-  Thread_Init() - Initializes thread pools
-
-  */
-BOOL Thread_Init(BOOL bFirstInitialization)
+BOOL Thread_InitOld(BOOL bFirstInitialization)
 {
 	HANDLE			hThread;
 	SYSTEM_INFO		SystemInfo;
@@ -144,12 +140,12 @@ BOOL Thread_Init(BOOL bFirstInitialization)
 	lpFreeJob	     = NULL;
 	lpAllocatedJobs  = NULL;
 	hJobAlert	     = CreateSemaphore(NULL, 0, 1000000, NULL);
-	InitializeCriticalSectionAndSpinCount(&csJobQueue, 100);
-	InitializeCriticalSectionAndSpinCount(&csWorkerThreadCount, 100);
-	InitializeCriticalSectionAndSpinCount(&csInheritedHandleLock, 100);
+	(void)InitializeCriticalSectionAndSpinCount(&csJobQueue, 100);
+	(void)InitializeCriticalSectionAndSpinCount(&csWorkerThreadCount, 100);
+	(void)InitializeCriticalSectionAndSpinCount(&csInheritedHandleLock, 100);
 
 	lpObsoleteThreadPool	= NULL;
-	ZeroMemory(&lpJobQueue[HEAD], sizeof(lpJobQueue[HEAD]));
+	ZeroMemory((void*) & lpJobQueue[HEAD], sizeof(lpJobQueue[HEAD]));
 	ZeroMemory(&dwPriorityCount, sizeof(dwPriorityCount));
 	GetSystemInfo(&SystemInfo);
 	//	Create completion port
@@ -205,12 +201,93 @@ BOOL Thread_Init(BOOL bFirstInitialization)
 	return TRUE;
 }
 
+/*
+
+  Thread_Init() - Initializes thread pools
+
+ */
+BOOL Thread_Init(BOOL bFirstInitialization)
+{
+	if (!bFirstInitialization) return TRUE;
+
+	// Initialize global counters
+	lWorkerThreads = lInitialWorkerThreads = lBlockingWorkerThreads = lFreeWorkerThreads = lWorkerTclLock = 0;
+
+	// Allocate TLS index and validate
+	dwThreadDataTlsIndex = TlsAlloc();
+	if (dwThreadDataTlsIndex == TLS_OUT_OF_INDEXES) return FALSE;
+
+	// Initialize job structures
+	lpFreeJob = NULL;
+	lpAllocatedJobs = NULL;
+	hJobAlert = CreateSemaphore(NULL, 0, 10000, NULL); // Reduced max count
+	if (!hJobAlert) return FALSE;
+
+	InitializeCriticalSectionAndSpinCount(&csJobQueue, 100);
+	InitializeCriticalSectionAndSpinCount(&csWorkerThreadCount, 100);
+	InitializeCriticalSectionAndSpinCount(&csInheritedHandleLock, 100);
+
+	lpObsoleteThreadPool = NULL;
+	ZeroMemory((void*)&lpJobQueue[HEAD], sizeof(lpJobQueue[HEAD]));
+	ZeroMemory(dwPriorityCount, sizeof(dwPriorityCount));
+
+	// Create I/O completion port
+	SYSTEM_INFO sysInfo;
+	GetSystemInfo(&sysInfo);
+	hCompletionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, sysInfo.dwNumberOfProcessors);
+	if (!hCompletionPort) return FALSE;
+
+	// Load thread config
+	DWORD dwWorkerThreadCount = 0;
+	if (!Config_Get_Int(&IniConfigFile, _T("Threads"), _T("Worker_Threads"), &dwWorkerThreadCount) || dwWorkerThreadCount < 5)
+		dwWorkerThreadCount = 5;
+
+	if (!Config_Get_Int(&IniConfigFile, _T("Threads"), _T("Io_Threads"), (PLONG)&lIoThreadCount) || lIoThreadCount < 1)
+		lIoThreadCount = 2;
+
+	// Set process priority
+	LPTSTR tszPriority = Config_Get(&IniConfigFile, _T("Threads"), _T("Process_Priority"), NULL, NULL);
+	if (tszPriority) {
+		Process_SetPriority(tszPriority, GetCurrentProcess());
+		Free(tszPriority);
+	}
+
+	// Load optional flags
+	Config_Get_Bool(&IniConfigFile, _T("Threads"), _T("Create_Tcl_Interpreters"), &bCreateTclInterpreters);
+	Config_Get_Bool(&IniConfigFile, _T("Threads"), _T("Log_Exiting_Worker_Threads"), &bLogExitingWorkerThreads);
+
+	// Allocate main thread's ThreadData
+	LPTHREADDATA lpThreadData = Allocate("Thread:Data:MAIN", sizeof(THREADDATA));
+	if (!lpThreadData) return FALSE;
+	TlsSetValue(dwThreadDataTlsIndex, lpThreadData);
+
+	// Create worker threads
+	for (DWORD n = 0; n < dwWorkerThreadCount; ++n) {
+		if (!CreateWorkerThread()) return FALSE;
+		++lWorkerThreads;
+		++lFreeWorkerThreads;
+		++lInitialWorkerThreads;
+	}
+
+	// Create I/O threads
+	for (INT i = 0; i < lIoThreadCount; ++i) {
+		DWORD dwThreadId = 0;
+		HANDLE hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)IoThreadEx, NULL, 0, &dwThreadId);
+		if (!hThread) return FALSE;
+		SetThreadPriority(hThread, THREAD_PRIORITY_ABOVE_NORMAL);
+		CloseHandle(hThread);
+	}
+
+	return TRUE;
+}
+
+
 
 VOID Thread_DeInit(VOID)
 {
 	LPTHREADDATA lpThreadData;
 	LPJOB        lpJob;
-	DWORD        n;
+	ULONGLONG    n;
 
 	bThreadExitFlag = TRUE;
 
@@ -229,12 +306,12 @@ VOID Thread_DeInit(VOID)
 
 #ifdef _DEBUG
 	// we need a lot of time if running under purify because TCL can be really slow to cleanup
-	n = GetTickCount() + 100000;
+	n = SafeGetTickCount64() + 100000;
 #else
-	n = GetTickCount() + 10000;
+	n = SafeGetTickCount64() + 10000;
 #endif
 
-	while ((lIoThreadCount || lWorkerThreadCount) && (GetTickCount() < n))
+	while ((lIoThreadCount || lWorkerThreadCount) && (SafeGetTickCount64() < n))
 	{
 		// wait a bit to see if stuff finishes because system thrashing
 		SleepEx(100, TRUE);
@@ -271,49 +348,58 @@ VOID Thread_DeInit(VOID)
 }
 
 
+#define JOB_POOL_SIZE 256
+#define JOB_POOL_USABLE (JOB_POOL_SIZE - 2)  // 1 for header, 1 for NULL tail
+#define MAX_PRIORITY_LEVELS 64  // Adjust to match your queue size
+
 BOOL QueueJob(LPVOID lpProc, LPVOID lpContext, DWORD dwFlags)
 {
-	LPJOB	lpJob;
-	DWORD	n, dwPriority;
+	DWORD dwPriority = (dwFlags & 0xFFFF);
+	if (dwPriority >= MAX_PRIORITY_LEVELS) return TRUE;  // Prevent out-of-bounds
 
-	dwPriority	= (dwFlags & 0xFFFF);
 	EnterCriticalSection(&csJobQueue);
-	if (! (lpJob = lpFreeJob))
+
+	LPJOB lpJob = lpFreeJob;
+	if (!lpJob)
 	{
-		//	Allocate more objects if pool is empty
-		if (! (lpFreeJob = (LPJOB)Allocate("Jobs", sizeof(JOB) * 256)))
+		LPJOB lpNewPool = (LPJOB)Allocate("Jobs", sizeof(JOB) * JOB_POOL_SIZE);
+		if (!lpNewPool)
 		{
-			//	Out of memory
 			LeaveCriticalSection(&csJobQueue);
 			return TRUE;
 		}
-		// first entry is just a fake to hold allocation for later freeing
-		lpFreeJob->lpNext = lpAllocatedJobs;
-		lpAllocatedJobs = lpFreeJob;
-		lpFreeJob = &lpFreeJob[1];
-		//	Initialize freejob list
-		lpJob	= lpFreeJob;
-		for (n = 0;n < 254;n++) lpJob	= (lpJob->lpNext = &lpJob[1]);
-		lpJob->lpNext	= NULL;
-		lpJob			= lpFreeJob;
+
+		lpNewPool->lpNext = lpAllocatedJobs;
+		lpAllocatedJobs = lpNewPool;
+
+		lpFreeJob = &lpNewPool[1];  // Skip header
+		for (DWORD i = 1; i < JOB_POOL_SIZE - 1; ++i)
+		{
+			lpFreeJob[i - 1].lpNext = &lpFreeJob[i];
+		}
+		lpFreeJob[JOB_POOL_USABLE].lpNext = NULL;
+		lpJob = lpFreeJob;
 	}
-	lpFreeJob	= lpFreeJob->lpNext;
 
-	//	Update job structure
-	lpJob->lpProc		= lpProc;
-	lpJob->lpContext	= lpContext;
-	lpJob->dwFlags		= dwFlags;
-	lpJob->lpNext		= NULL;
+	lpFreeJob = lpFreeJob->lpNext;
 
-	//	Append job item to priority queue
-	if (! lpJobQueue[HEAD][dwPriority])
+	// Fill job
+	lpJob->lpProc = lpProc;
+	lpJob->lpContext = lpContext;
+	lpJob->dwFlags = dwFlags;
+	lpJob->lpNext = NULL;
+
+	// Append to queue
+	if (!lpJobQueue[HEAD][dwPriority])
 	{
-		lpJobQueue[HEAD][dwPriority]	= lpJob;
+		lpJobQueue[HEAD][dwPriority] = lpJob;
 	}
-	else lpJobQueue[TAIL][dwPriority]->lpNext	= lpJob;
-	lpJobQueue[TAIL][dwPriority]	= lpJob;
+	else
+	{
+		lpJobQueue[TAIL][dwPriority]->lpNext = lpJob;
+	}
+	lpJobQueue[TAIL][dwPriority] = lpJob;
 
-	//	Release lock
 	LeaveCriticalSection(&csJobQueue);
 	ReleaseSemaphore(hJobAlert, 1, NULL);
 

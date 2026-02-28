@@ -21,8 +21,97 @@
 
 #include <ioFTPD.h>
 #include <pdh.h>
+#include <dbghelp.h>
+#pragma comment(lib, "dbghelp.lib")
 
 #define DEFAULT_CONFIG_FILE _T("ioFTPD.ini")
+
+// ---------------------------------------------------------------------------
+// Crash minidump support
+// ---------------------------------------------------------------------------
+// On any unhandled exception (including STATUS_HEAP_CORRUPTION 0xC0000374),
+// writes a full-memory minidump to the same directory as ioFTPD.exe:
+//   crash_YYYYMMDD_HHMMSS.dmp
+//
+// The dump includes all private R/W heap pages, all thread stacks, handle
+// data, and unloaded-module history — enough for WinDbg to diagnose
+// heap corruption, use-after-free, and buffer overruns.
+//
+// To analyse: open in WinDbg → "!analyze -v", then "!heap -p -a <addr>"
+// on the faulting address to walk the heap block chain.
+// ---------------------------------------------------------------------------
+
+static VOID
+IoFTPD_WriteMiniDump(EXCEPTION_POINTERS *pExcInfo)
+{
+    HANDLE     hFile;
+    TCHAR      szPath[MAX_PATH];
+    TCHAR      szDir[MAX_PATH];
+    TCHAR     *pSlash;
+    DWORD      dwLen;
+    SYSTEMTIME st;
+    MINIDUMP_EXCEPTION_INFORMATION mei;
+
+    // Derive the exe directory at crash time (tszExePath may not be set yet).
+    dwLen = GetModuleFileName(NULL, szDir, MAX_PATH);
+    if (dwLen > 0 && dwLen < MAX_PATH)
+    {
+        pSlash = _tcsrchr(szDir, _T('\\'));
+        if (pSlash)
+            pSlash[1] = _T('\0');   // keep trailing backslash
+        else
+            szDir[0] = _T('\0');
+    }
+    else
+    {
+        szDir[0] = _T('\0');
+    }
+
+    GetLocalTime(&st);
+    _sntprintf_s(szPath, MAX_PATH, _TRUNCATE,
+        _T("%scrash_%04u%02u%02u_%02u%02u%02u.dmp"),
+        szDir,
+        st.wYear, st.wMonth, st.wDay,
+        st.wHour, st.wMinute, st.wSecond);
+
+    hFile = CreateFile(szPath,
+                       GENERIC_WRITE, 0, NULL,
+                       CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE)
+        return;
+
+    mei.ThreadId          = GetCurrentThreadId();
+    mei.ExceptionPointers = pExcInfo;
+    mei.ClientPointers    = FALSE;
+
+    // MiniDumpWithPrivateReadWriteMemory captures all private heap/stack pages
+    // without mapped-file sections — a reasonable size/detail trade-off.
+    // Change to MiniDumpWithFullMemory for the absolute maximum (larger file).
+    MiniDumpWriteDump(
+        GetCurrentProcess(),
+        GetCurrentProcessId(),
+        hFile,
+        (MINIDUMP_TYPE)(
+            MiniDumpWithPrivateReadWriteMemory  |   // heap + stacks
+            MiniDumpWithHandleData              |   // open handles
+            MiniDumpWithThreadInfo              |   // all thread states
+            MiniDumpWithProcessThreadData       |   // thread context + stacks
+            MiniDumpWithUnloadedModules),           // recently-unloaded DLLs
+        &mei,
+        NULL,
+        NULL);
+
+    CloseHandle(hFile);
+}
+
+static LONG WINAPI
+IoFTPD_UnhandledExceptionFilter(EXCEPTION_POINTERS *pExcInfo)
+{
+    IoFTPD_WriteMiniDump(pExcInfo);
+    // Return EXCEPTION_CONTINUE_SEARCH so that Windows Error Reporting
+    // still fires and the process terminates normally.
+    return EXCEPTION_CONTINUE_SEARCH;
+}
 
 volatile DWORD    dwDaemonStatus;
 
@@ -649,6 +738,11 @@ WinMain(HINSTANCE hInstance,
 {
 	SERVICE_TABLE_ENTRY  ServiceTable[2];
 
+	// Install crash handler before anything else — catches STATUS_HEAP_CORRUPTION
+	// (0xC0000374) and any other unhandled exception in all threads, including
+	// service threads started by the SCM.
+	SetUnhandledExceptionFilter(IoFTPD_UnhandledExceptionFilter);
+
 	ghInstance    = hInstance;
 	tszCommandLine  = tszCmdLine;
 	dwMyPid = GetCurrentProcessId();
@@ -664,10 +758,18 @@ WinMain(HINSTANCE hInstance,
 			DoSetup();
 			if (InitializeDaemon(TRUE))
 			{
-				exit(CommonMain());
+			// Use ExitProcess rather than exit() to prevent CRT atexit() handlers
+			// (notably OpenSSL's OPENSSL_cleanup, registered by OSSL_PROVIDER_load)
+			// from running while FTP worker threads are still alive.  If Thread_DeInit
+			// times out and workers survive, exit() would call OPENSSL_cleanup() and
+			// free OpenSSL algorithm/string tables while those threads are executing
+			// TLS I/O, causing a use-after-free crash (0xC0000005 in strnlen).
+			// ExitProcess terminates all remaining threads first, then calls
+			// DLL_PROCESS_DETACH; OpenSSL memory is reclaimed by the OS on exit.
+			ExitProcess(CommonMain());
 			}
 			ErrorExit(_T("WinMain"), 1, _T("Unspecified error in InitializeDaemon\r\n"));
 		}
 	}
-	exit(0);
+	ExitProcess(0);
 }

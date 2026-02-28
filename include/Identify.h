@@ -102,12 +102,12 @@ typedef struct _HOSTINFO
 	DWORD           dwLastAutoBanLogDelay;
 	DWORD			dwLastAutoBanLogTime;
 	DWORD           dwLastUnMatchedLogDelay;
-	DWORD           dwLastUnMatchedLogTime;
-	DWORD           dwLastBadHostLogDelay;
-	DWORD           dwLastBadHostLogTime;
+	ULONGLONG       dwLastUnMatchedLogTime;
+	ULONGLONG       dwLastBadHostLogDelay;
+	ULONGLONG       dwLastBadHostLogTime;
 	DWORD           dwLastFailedLoginType; // so different messages show up
 	DWORD           dwLastFailedLoginLogDelay;
-	DWORD           dwLastFailedLoginLogTime;
+	ULONGLONG       dwLastFailedLoginLogTime;
 	DWORD			dwAttemptCount;
 	DWORD			dwShareCount;
 	DWORD           dwKnockedTicks;

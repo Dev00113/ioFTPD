@@ -517,9 +517,10 @@ LPBANINFO GetNetworkBans(VOID)
 {
 	LPHOSTINFO	*lpHostInfo;
 	LPBANINFO	lpBanInfo[2];
-	DWORD		n, dwTickCount, dwDiff;
+	DWORD		n, dwDiff;
+	ULONGLONG	dwTickCount;
 
-	dwTickCount	= GetTickCount();
+	dwTickCount	= SafeGetTickCount64();
 	lpBanInfo[HEAD]	= NULL;
 	lpBanInfo[TAIL]	= NULL;
 	EnterCriticalSection(&csHostArray);
@@ -527,7 +528,7 @@ LPBANINFO GetNetworkBans(VOID)
 	for (n = dwHostArrayItems;n--;lpHostInfo++)
 	{
 		if (lpHostInfo[0]->dwAttemptCount >= dwMaxTicks &&
-			(dwDiff = Time_DifferenceDW32(lpHostInfo[0]->dwLastOccurance, dwTickCount)) < dwBanDuration)
+			(dwDiff = Time_DifferenceDW64(lpHostInfo[0]->dwLastOccurance, dwTickCount)) < dwBanDuration)
 		{
 			//	Add ban to list
 			if (lpBanInfo[HEAD])
@@ -563,19 +564,20 @@ VOID UnbanNetworkAddress(LPTSTR tszNetworkAddressMask, LPBUFFER lpBuffer, LPTSTR
 	LPHOSTINFO lpHostInfo;
 	IN_ADDR    InetAddress;
 	LPSTR      tszAddress;
-	DWORD      n, dwDiff, dwTickCount;
+	DWORD      n, dwDiff;
+	ULONGLONG	dwTickCount;
 
 	//	Binary search
 	EnterCriticalSection(&csHostArray);
 	
-	dwTickCount = GetTickCount();
+	dwTickCount = SafeGetTickCount64();
 	for (n=0 ; n<dwHostArrayItems ; n++)
 	{
 		lpHostInfo = lpHostArray[n];
 		if (!lpHostInfo) continue;
 
 		if ((lpHostInfo->dwAttemptCount >= dwMaxTicks) &&
-			((dwDiff = Time_DifferenceDW32(lpHostInfo->dwLastOccurance, dwTickCount)) < dwBanDuration))
+			((dwDiff = Time_DifferenceDW64(lpHostInfo->dwLastOccurance, dwTickCount)) < dwBanDuration))
 		{
 			// it's banned so now check IP
 			InetAddress.s_addr = ((PULONG)lpHostInfo->NetworkAddress)[0];
@@ -603,7 +605,8 @@ RegisterNetworkAddress(PBYTE pNetworkAddress, DWORD dwNetworkAddress)
 {
 	LPHOSTINFO	lpHostInfo, lpOldHostInfo, lpSeek;
 	LPVOID		lpMemory;
-	DWORD		dwDifference, dwTickCount, n;
+	DWORD		dwDifference, n;
+	ULONGLONG	dwTickCount;
 	BOOL		bReturn, bReject;
 	INT			iResult;
 	BYTE        LocalHost[8];
@@ -618,7 +621,7 @@ RegisterNetworkAddress(PBYTE pNetworkAddress, DWORD dwNetworkAddress)
 	LocalHost[3] = 1;
 	bReturn		= FALSE;
 	bReject     = FALSE;
-	dwTickCount	= GetTickCount();
+	dwTickCount	= SafeGetTickCount64();
 	//	Allocate memory for hostinfo structure
 	lpHostInfo	= (LPHOSTINFO)Allocate("Identify:HostInfo", sizeof(HOSTINFO));
 	lpOldHostInfo	= NULL;
@@ -639,7 +642,7 @@ RegisterNetworkAddress(PBYTE pNetworkAddress, DWORD dwNetworkAddress)
 	{
 		//	Determinate cheapest method
 		lpSeek	= lpFreeHostList[HEAD];
-		for (n = 0;n < 128 && lpSeek && Time_DifferenceDW32(lpSeek->dwLastOccurance, dwTickCount) > dwBanDuration;n++)
+		for (n = 0;n < 128 && lpSeek && Time_DifferenceDW64(lpSeek->dwLastOccurance, dwTickCount) > dwBanDuration;n++)
 		{
 			QuickDelete(lpHostArray, dwHostArrayItems--, lpSeek, (QUICKCOMPAREPROC) CompareHostInfo, NULL);
 			lpSeek	= lpSeek->lpNext;
@@ -684,7 +687,7 @@ RegisterNetworkAddress(PBYTE pNetworkAddress, DWORD dwNetworkAddress)
 		//	Retrieve new pointer from HostArray
 		lpHostInfo	= lpHostArray[iResult];
 		//	Get time difference
-		dwDifference	= Time_DifferenceDW32(lpHostInfo->dwLastOccurance, dwTickCount);
+		dwDifference	= Time_DifferenceDW64(lpHostInfo->dwLastOccurance, dwTickCount);
 		//	Update tickcount
 		lpHostInfo->dwLastOccurance	= dwTickCount;
 		//	Check current flags
@@ -722,7 +725,7 @@ RegisterNetworkAddress(PBYTE pNetworkAddress, DWORD dwNetworkAddress)
 			}
 			memcpy(&addr, lpHostInfo->NetworkAddress, sizeof(addr));
 			// moved putlog to be done outside the critical section lock
-			if (Time_DifferenceDW32(lpHostInfo->dwLastAutoBanLogTime, dwTickCount) >= lpHostInfo->dwLastAutoBanLogDelay * 60 * 1000)
+			if (Time_DifferenceDW64(lpHostInfo->dwLastAutoBanLogTime, dwTickCount) >= lpHostInfo->dwLastAutoBanLogDelay * 60 * 1000)
 			{
 				if (lpHostInfo->dwLastAutoBanLogDelay < dwMaxLogSuppression)
 				{
@@ -928,7 +931,7 @@ BOOL IdentifyClient(LPNEWCLIENT lpNewClient)
 			lpHostInfo->lpNext	= (LPHOSTINFO)lpNewClient;
 			bError	= FALSE;
 		}
-		else if (Time_DifferenceDW32(lpHostInfo->dwHostNameCacheTime, GetTickCount()) >= dwHostNameCache)
+		else if (Time_DifferenceDW64(lpHostInfo->dwHostNameCacheTime, SafeGetTickCount64()) >= dwHostNameCache)
 		{
 			//	Allocate memory for resolve item
 			lpResolve = (LPRESOLVE)Allocate("Identify:Resolve", sizeof(RESOLVE));
@@ -1153,7 +1156,7 @@ static BOOL Ident_Read(PCONNECTION_INFO pConnection)
 	}
 	else
 	{
-		dwDifference	= Time_DifferenceDW32(lpHostInfo->dwIdentCacheTime, GetTickCount());
+		dwDifference	= Time_DifferenceDW64(lpHostInfo->dwIdentCacheTime, SafeGetTickCount64());
 		//	Check ident validity
 		if (dwDifference >= dwIdentCache)
 		{
@@ -1428,7 +1431,7 @@ Knock_Accept(WPARAM wParam, LPARAM lParam)
 		// keeping state only useful if more than 1 port used
 
 		EnterCriticalSection(&csKnockHosts);
-		dwTicks = GetTickCount();
+		dwTicks = SafeGetTickCount64();
 		CopyMemory(&KnockInfo.InetAddr, &addrR.sin_addr, sizeof(addrR.sin_addr));
 		KnockInfo.dwStatus     = 0;
 		KnockInfo.dwKnockTicks = dwTicks;
@@ -1438,7 +1441,7 @@ Knock_Accept(WPARAM wParam, LPARAM lParam)
 			// time to clean house!
 			for (n=0 ; n < dwNumKnockHosts ; )
 			{
-				if (Time_DifferenceDW32(dwTicks, KnockHosts[n]->dwKnockTicks) > MAX_KNOCK_SEPARATION)
+				if (Time_DifferenceDW64(dwTicks, KnockHosts[n]->dwKnockTicks) > MAX_KNOCK_SEPARATION)
 				{
 					QuickDeleteIndex(KnockHosts, dwNumKnockHosts--, n+1);
 					continue;

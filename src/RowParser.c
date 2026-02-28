@@ -140,17 +140,23 @@ DataRow_ParseBuffer(PCHAR pBuffer,
 		Putlog(LOG_ERROR, _T("Unknown field name '%s'.\r\n"), pField);
 		continue;
 	}
-    //  Get buffer offset
-    lpBuffer  = (LPVOID)((ULONG)lpStorage + lpDataRow->dwOffset);
+    //  Get buffer offset — use ULONG_PTR (pointer-sized integer) so that the
+    //  arithmetic is correct on both Win32 and Win64.  ULONG would silently
+    //  truncate the high 32 bits on a 64-bit build.
+    lpBuffer  = (LPVOID)((ULONG_PTR)lpStorage + lpDataRow->dwOffset);
 
     switch (lpDataRow->dwType)
     {
     case DT_STRING:
       if (lpDataRow->dwMaxArgs == 1)
       {
-        //  Copy single string
+        //  Copy single string, ensuring null termination even after truncation.
+        //  szData[original_dwData] was set to '\0' above, but after clamping
+        //  dwData to dwMaxLength, szData[dwMaxLength] may contain arbitrary
+        //  file bytes — not a null terminator.  Write it explicitly.
         if (dwData > lpDataRow->dwMaxLength) dwData  = lpDataRow->dwMaxLength;
-        CopyMemory(lpBuffer, szData, dwData + 1);
+        CopyMemory(lpBuffer, szData, dwData);
+        ((LPSTR)lpBuffer)[dwData]  = '\0';
         break;
       }
 
@@ -170,7 +176,7 @@ DataRow_ParseBuffer(PCHAR pBuffer,
         //  Check for end of string
         if (pCheck == &szData[dwData]) break;
         //  Move buffer to next entry
-        lpBuffer  = (LPVOID)((ULONG)lpBuffer + lpDataRow->dwMaxLength + 1);
+        lpBuffer  = (LPVOID)((ULONG_PTR)lpBuffer + lpDataRow->dwMaxLength + 1);
         //  Reduce length of available data
         dwData  -= &pCheck[1] - szData;
         szData  = &pCheck[1];
@@ -184,7 +190,7 @@ DataRow_ParseBuffer(PCHAR pBuffer,
         if (i32 >= 0 && i32 < MAX_GID && Gid2Group(i32))
         {
           ((PINT32)lpBuffer)[0]  = i32;
-          lpBuffer  = (LPVOID)((ULONG)lpBuffer + sizeof(INT32));
+          lpBuffer  = (LPVOID)((ULONG_PTR)lpBuffer + sizeof(INT32));
           j++;
         }
         if (pCheck[0] == '\0') break;
@@ -200,7 +206,7 @@ DataRow_ParseBuffer(PCHAR pBuffer,
         ((PINT32)lpBuffer)[0]  = i32;
         if (pCheck[0] == '\0') break;
         szData  = &pCheck[1];
-        lpBuffer  = (LPVOID)((ULONG)lpBuffer + sizeof(INT32));
+        lpBuffer  = (LPVOID)((ULONG_PTR)lpBuffer + sizeof(INT32));
       }
       break;
     case DT_INT64:
@@ -212,7 +218,7 @@ DataRow_ParseBuffer(PCHAR pBuffer,
         if (pCheck[0] == '\0') break;
         //  Reduce length
         szData  = &pCheck[1];
-        lpBuffer  = (LPVOID)((ULONG)lpBuffer + sizeof(INT64));
+        lpBuffer  = (LPVOID)((ULONG_PTR)lpBuffer + sizeof(INT64));
       }
       break;
     case DT_PASSWORD:
@@ -255,8 +261,8 @@ DataRow_Dump(LPBUFFER lpOutBuffer,
   for (;dwDataRowArray--;)
   {
     lpDataRow  = &lpDataRowArray[dwDataRowArray];
-    //  Get offset where-to read data
-    lpBuffer  = (LPVOID)((ULONG)lpStorage + lpDataRow->dwOffset);
+    //  Get offset where-to read data — ULONG_PTR for portability (see ParseBuffer)
+    lpBuffer  = (LPVOID)((ULONG_PTR)lpStorage + lpDataRow->dwOffset);
 
     switch (lpDataRow->dwType)
     {
@@ -267,7 +273,7 @@ DataRow_Dump(LPBUFFER lpOutBuffer,
       {
         if (((LPSTR)lpBuffer)[0] == '\0') break;
         FormatString(lpOutBuffer, _TEXT(" %s"),  (LPSTR)lpBuffer);
-        lpBuffer  = (LPVOID)((ULONG)lpBuffer + lpDataRow->dwMaxLength + 1);
+        lpBuffer  = (LPVOID)((ULONG_PTR)lpBuffer + lpDataRow->dwMaxLength + 1);
       }
       Put_Buffer(lpOutBuffer, "\r\n", 2);
       break;
@@ -278,7 +284,7 @@ DataRow_Dump(LPBUFFER lpOutBuffer,
         i32  = ((PINT32)lpBuffer)[0];
         if (i32 < 0) break;
         FormatString(lpOutBuffer, _TEXT(" %i"), i32);
-        lpBuffer  = (LPVOID)((ULONG)lpBuffer + sizeof(INT32));
+        lpBuffer  = (LPVOID)((ULONG_PTR)lpBuffer + sizeof(INT32));
       }
       Put_Buffer(lpOutBuffer, "\r\n", 2);
       break;
@@ -288,7 +294,7 @@ DataRow_Dump(LPBUFFER lpOutBuffer,
       {
         i32  = ((PINT32)lpBuffer)[0];
         FormatString(lpOutBuffer, _TEXT(" %i"), i32);
-        lpBuffer  = (LPVOID)((ULONG)lpBuffer + sizeof(INT32));
+        lpBuffer  = (LPVOID)((ULONG_PTR)lpBuffer + sizeof(INT32));
       }
       Put_Buffer(lpOutBuffer, "\r\n", 2);
       break;
@@ -298,7 +304,7 @@ DataRow_Dump(LPBUFFER lpOutBuffer,
       {
         i64  = ((PINT64)lpBuffer)[0];
         FormatString(lpOutBuffer, _TEXT(" %I64i"), i64);
-        lpBuffer  = (LPVOID)((ULONG)lpBuffer + sizeof(INT64));
+        lpBuffer  = (LPVOID)((ULONG_PTR)lpBuffer + sizeof(INT64));
       }
       Put_Buffer(lpOutBuffer, "\r\n", 2);
       break;

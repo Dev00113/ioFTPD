@@ -50,10 +50,13 @@ INT spCompare(LPSTR String1, LPSTR String2)
 			break;
 
 		default:
-			if (tolower(String1[0]) != tolower(String2[0]))
+			// Cast to unsigned char before tolower(): C11 §7.4 requires the argument
+			// to be representable as unsigned char or EOF.  Plain char is signed on
+			// Windows; bytes 0x80-0xFF are negative and produce UB without the cast.
+			if (tolower((unsigned char)String1[0]) != tolower((unsigned char)String2[0]))
 			{
 				//	Get resume offset
-				if (! pStore[0]) return String1[0] - String2[0];
+				if (! pStore[0]) return (unsigned char)String1[0] - (unsigned char)String2[0];
 
 				String1	= pStore[0];
 				String2	= ++(pStore[1]);
@@ -128,15 +131,16 @@ INT iCompare(LPSTR String1, LPSTR String2)
 				default:
 					if (String1[1] == '-' && String1[-1] != '\\')
 					{
-						//	Range 'x0' - 'x1'
-						if (tolower(String2[0]) >= tolower(String1[0]) &&
-							tolower(String2[0]) <= tolower(String1[2]))
+						//	Range 'x0' - 'x1': cast all three char operands to
+						//	unsigned char before tolower() to avoid UB on bytes >= 0x80.
+						if (tolower((unsigned char)String2[0]) >= tolower((unsigned char)String1[0]) &&
+							tolower((unsigned char)String2[0]) <= tolower((unsigned char)String1[2]))
 						{
 							String1	+= 2;
 							bMatch = TRUE;
 						}
 					}
-					else if (tolower(String1[0]) == tolower(String2[0]))
+					else if (tolower((unsigned char)String1[0]) == tolower((unsigned char)String2[0]))
 					{
 						bMatch = TRUE;
 					}
@@ -159,10 +163,10 @@ INT iCompare(LPSTR String1, LPSTR String2)
 			break;
 
 		default:
-			if (tolower(String1[0]) != tolower(String2[0]))
+			if (tolower((unsigned char)String1[0]) != tolower((unsigned char)String2[0]))
 			{
 				//	Get resume offset
-				if (! pStore[0]) return String1[0] - String2[0];
+				if (! pStore[0]) return (unsigned char)String1[0] - (unsigned char)String2[0];
 
 				String1	= pStore[0];
 				String2	= ++(pStore[1]);
@@ -237,15 +241,16 @@ INT PathCompare(LPSTR String1, LPSTR String2)
 				default:
 					if (String1[1] == '-' && String1[-1] != '\\')
 					{
-						//	Range 'x0' - 'x1'
-						if (tolower(String2[0]) >= tolower(String1[0]) &&
-							tolower(String2[0]) <= tolower(String1[2]))
+						//	Range 'x0' - 'x1': cast all three char operands to
+						//	unsigned char before tolower() to avoid UB on bytes >= 0x80.
+						if (tolower((unsigned char)String2[0]) >= tolower((unsigned char)String1[0]) &&
+							tolower((unsigned char)String2[0]) <= tolower((unsigned char)String1[2]))
 						{
 							String1	+= 2;
 							bMatch = TRUE;
 						}
 					}
-					else if (tolower(String1[0]) == tolower(String2[0]))
+					else if (tolower((unsigned char)String1[0]) == tolower((unsigned char)String2[0]))
 					{
 						bMatch = TRUE;
 					}
@@ -270,10 +275,10 @@ INT PathCompare(LPSTR String1, LPSTR String2)
 		case '\\':
 			if (String1[0] != '\0') String1++;
 		default:
-			if (tolower(String1[0]) != tolower(String2[0]))
+			if (tolower((unsigned char)String1[0]) != tolower((unsigned char)String2[0]))
 			{
 				//	Get resume offset
-				if (! pStore[0]) return String1[0] - String2[0];
+				if (! pStore[0]) return (unsigned char)String1[0] - (unsigned char)String2[0];
 
 				String1	= pStore[0];
 				String2	= ++(pStore[1]);

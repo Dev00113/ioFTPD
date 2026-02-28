@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Purify|Win32">
+      <Configuration>Purify</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{3BF34BC5-0173-4C11-8356-660182C98A77}</ProjectGuid>
+    <RootNamespace>ioFTPDv6</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Purify|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>NotSet</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>NotSet</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Purify|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>17.0.36414.14</_ProjectFileVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
+    <IntDir>$(Configuration)\</IntDir>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
+    <IntDir>$(Configuration)\</IntDir>
+    <GenerateManifest>true</GenerateManifest>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Purify|Win32'">
+    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
+    <IntDir>$(Configuration)\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>include;C:\Dev\Libs\VS2022\x86\TCL\Shared\Release\include;C:\Program Files\Debugging Tools for Windows\sdk\inc;C:\Dev\Libs\VS2022\x86\OpenSSL\Shared\Release\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;USE_MALLOC;_DEBUG;_CONSOLE;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>mswsock.lib;ws2_32.lib;tcl90.lib;crypt32.lib;version.lib;shlwapi.lib;pdh.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>..\ioFTPD\system\ioFTPD-debug.exe</OutputFile>
+      <AdditionalLibraryDirectories>..\ioFTPD\system;C:\Dev\Libs\VS2022\x86\TCL\Shared\Release\lib;C:\Dev\Libs\VS2022\x86\OpenSSL\Shared\Release\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AssemblyDebug>true</AssemblyDebug>
+      <GenerateMapFile>true</GenerateMapFile>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX86</TargetMachine>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+      <AdditionalIncludeDirectories>include;C:\Dev\Libs\VS2022\x86\TCL\Shared\Release\include;C:\Program Files\Debugging Tools for Windows\sdk\inc;C:\Dev\Libs\VS2022\x86\OpenSSL\Shared\Release\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;USE_MALLOC;_CONSOLE;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <StringPooling>true</StringPooling>
+      <MinimalRebuild>false</MinimalRebuild>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>mswsock.lib;ws2_32.lib;tcl90.lib;version.lib;shlwapi.lib;pdh.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>..\ioFTPD\system\ioFTPD.exe</OutputFile>
+      <AdditionalLibraryDirectories>..\ioFTPD\system;C:\Dev\Libs\VS2022\x86\TCL\Shared\Release\lib;C:\Dev\Libs\VS2022\x86\OpenSSL\Shared\Release\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateMapFile>true</GenerateMapFile>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX86</TargetMachine>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Purify|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>include;C:\Dev\Libs\VS2022\x86\TCL\Shared\Release\include;C:\Program Files\Debugging Tools for Windows\sdk\inc;C:\Dev\Libs\VS2022\x86\OpenSSL\Shared\Release\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;USE_MALLOC;_CONSOLE;_CRT_SECURE_NO_DEPRECATE;_CRT_NONSTDC_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <SmallerTypeCheck>false</SmallerTypeCheck>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <ProjectReference>
+      <LinkLibraryDependencies>true</LinkLibraryDependencies>
+    </ProjectReference>
+    <Link>
+      <AdditionalOptions>/fixed:no %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalDependencies>Kernel32.lib;mswsock.lib;ws2_32.lib;tcl90.lib;version.lib;shlwapi.lib;pdh.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>..\ioFTPD\system\ioFTPD-purify.exe</OutputFile>
+      <AdditionalLibraryDirectories>..\ioFTPD\system;C:\Dev\Libs\VS2022\x86\TCL\Shared\Release\lib;C:\Dev\Libs\VS2022\x86\OpenSSL\Shared\Release\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AssemblyDebug>true</AssemblyDebug>
+      <GenerateMapFile>true</GenerateMapFile>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <DataExecutionPrevention />
+      <TargetMachine>MachineX86</TargetMachine>
+      <ShowProgress>LinkVerbose</ShowProgress>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\Array.c" />
+    <ClCompile Include="src\Buffer.c" />
+    <ClCompile Include="src\Change.c" />
+    <ClCompile Include="src\Command.c" />
+    <ClCompile Include="src\Compare.c" />
+    <ClCompile Include="src\ConfigReader.c" />
+    <ClCompile Include="src\Crc32.c" />
+    <ClCompile Include="src\DataCopy.c" />
+    <ClCompile Include="src\DataOffset.c" />
+    <ClCompile Include="src\DirectoryCache.c" />
+    <ClCompile Include="src\Execute.c" />
+    <ClCompile Include="src\File.c" />
+    <ClCompile Include="src\FtpBaseCommands.c" />
+    <ClCompile Include="src\FtpDataChannel.c" />
+    <ClCompile Include="src\FtpServer.c" />
+    <ClCompile Include="src\FtpSiteCommands.c" />
+    <ClCompile Include="src\GroupFileModule.c" />
+    <ClCompile Include="src\GroupNew.c" />
+    <ClCompile Include="src\Help.c" />
+    <ClCompile Include="src\IdDatabase.c" />
+    <ClCompile Include="src\Identify.c" />
+    <ClCompile Include="src\InternalMessageHandler.c" />
+    <ClCompile Include="src\IoDebug.c" />
+    <ClCompile Include="src\IoProcs.c" />
+    <ClCompile Include="src\IoString.c" />
+    <ClCompile Include="src\IoTime.c" />
+    <ClCompile Include="src\Locking.c" />
+    <ClCompile Include="src\LogSystem.c" />
+    <ClCompile Include="src\Main.c" />
+    <ClCompile Include="src\Memory.c" />
+    <ClCompile Include="src\Message.c" />
+    <ClCompile Include="src\MessageHandler.c" />
+    <ClCompile Include="src\MessageObjects.c" />
+    <ClCompile Include="src\MessageVariables.c" />
+    <ClCompile Include="src\NewList.c" />
+    <ClCompile Include="src\OpenSSL.c" />
+    <ClCompile Include="src\Permission.c" />
+    <ClCompile Include="src\PWD.c" />
+    <ClCompile Include="src\RemoteAdmin.c" />
+    <ClCompile Include="src\RowParser.c" />
+    <ClCompile Include="src\Scheduler.c" />
+    <ClCompile Include="src\Services.c" />
+    <ClCompile Include="src\sha1.c" />
+    <ClCompile Include="src\Socket.c" />
+    <ClCompile Include="src\SocketAPI.c" />
+    <ClCompile Include="src\Stats.c" />
+    <ClCompile Include="src\Tcl.c" />
+    <ClCompile Include="src\Threads.c" />
+    <ClCompile Include="src\TickCountHelper.c" />
+    <ClCompile Include="src\Timer.c" />
+    <ClCompile Include="src\UserFileModule.c" />
+    <ClCompile Include="src\UserNew.c" />
+    <ClCompile Include="src\Who.c" />
+    <ClCompile Include="src\WinErrors.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\AdminCommands.h" />
+    <ClInclude Include="include\Array.h" />
+    <ClInclude Include="include\brg_endian.h" />
+    <ClInclude Include="include\brg_types.h" />
+    <ClInclude Include="include\Buffer.h" />
+    <ClInclude Include="include\Client.h" />
+    <ClInclude Include="include\ConfigReader.h" />
+    <ClInclude Include="include\ConnectionInfo.h" />
+    <ClInclude Include="include\ControlConnection.h" />
+    <ClInclude Include="include\DataConnection.h" />
+    <ClInclude Include="include\DataCopy.h" />
+    <ClInclude Include="include\DataOffset.h" />
+    <ClInclude Include="include\DirectoryCache.h" />
+    <ClInclude Include="include\Event.h" />
+    <ClInclude Include="include\Ftp.h" />
+    <ClInclude Include="include\Group.h" />
+    <ClInclude Include="include\GroupFile.h" />
+    <ClInclude Include="include\IdDataBase.h" />
+    <ClInclude Include="include\Identify.h" />
+    <ClInclude Include="include\IoError.h" />
+    <ClInclude Include="include\IoFile.h" />
+    <ClInclude Include="include\ioFTPD.h" />
+    <ClInclude Include="include\IoMemory.h" />
+    <ClInclude Include="include\IoOverlapped.h" />
+    <ClInclude Include="include\IoProc.h" />
+    <ClInclude Include="include\IoResource.h" />
+    <ClInclude Include="include\IoService.h" />
+    <ClInclude Include="include\iosocket.h" />
+    <ClInclude Include="include\IoString.h" />
+    <ClInclude Include="include\IoTcl.h" />
+    <ClInclude Include="include\IoTime.h" />
+    <ClInclude Include="include\Job.h" />
+    <ClInclude Include="include\Lists.h" />
+    <ClInclude Include="include\LockObject.h" />
+    <ClInclude Include="include\Log.h" />
+    <ClInclude Include="include\MessageFile.h" />
+    <ClInclude Include="include\NewClient.h" />
+    <ClInclude Include="include\NewList.h" />
+    <ClInclude Include="include\RowParser.h" />
+    <ClInclude Include="include\Scheduler.h" />
+    <ClInclude Include="include\Select.h" />
+    <ClInclude Include="include\ServerLimits.h" />
+    <ClInclude Include="include\sha1.h" />
+    <ClInclude Include="include\Stats.h" />
+    <ClInclude Include="include\Threads.h" />
+    <ClInclude Include="include\TickCountHelper.h" />
+    <ClInclude Include="include\Timer.h" />
+    <ClInclude Include="include\TimerProcedure.h" />
+    <ClInclude Include="include\User.h" />
+    <ClInclude Include="include\UserFile.h" />
+    <ClInclude Include="include\VirtualPath.h" />
+    <ClInclude Include="include\Who.h" />
+    <ClInclude Include="include\WinMessages.h" />
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="Version.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="src\ioFTPD.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="ioFTPD.rc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

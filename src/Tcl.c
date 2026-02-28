@@ -19,6 +19,8 @@
  * MA 02110-1301, USA.
  */
 
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <ioFTPD.h>
 #include <tcl.h>
 
@@ -201,147 +203,110 @@ DWORD        dwTclInterpreterTlsIndex = TLS_OUT_OF_INDEXES;
 // You can tell which by examining the pbValid result, or if you are treating
 // the string as read only and temporary you can ignore it.  If length == 0
 // and a pointer was returned, you still have to free it.
-static CHAR *
-Tcl_IoGetString(Tcl_Obj *objPtr, char *string, int length, BOOL *pbValid)
+static CHAR*
+Tcl_IoGetString(Tcl_Obj* objPtr, char* string, int length, BOOL* pbValid)
 {
-	unsigned char *tcl, *buf, *tclStart;
-	int            tclLen, newLen;
-	unsigned char  byte;
-	unsigned char *pTclEnd, *pBufEnd;
-	BOOL           valid = TRUE;
-	WCHAR          uniChar;
+	unsigned char* tclStart, * tcl, * buf;
+	int tclLen;
+	BOOL valid = TRUE;
+	WCHAR uniChar;
 
-	if (string && !length)
-	{
-		if (*pbValid) *pbValid = FALSE;
+	if (pbValid) *pbValid = TRUE;
+
+	// Get UTF-8 string from Tcl object
+	tclStart = tcl = (unsigned char*)Tcl_GetStringFromObj(objPtr, &tclLen);
+	if (!tclStart) {
+		if (string) string[0] = '\0';
+		if (pbValid) *pbValid = FALSE;
 		return NULL;
 	}
 
-	tclStart = tcl = (unsigned char *) Tcl_GetStringFromObj(objPtr, &tclLen);
-	buf = (unsigned char *) string;
-
-	if (!tcl)
-	{
-		if (buf) *buf = 0;
-		if (*pbValid) *pbValid = FALSE;
-		return NULL;
-	}
-
-	newLen = length;
-	if (length == 0)
-	{
-		newLen = tclLen + 1;
-		string = buf = Allocate("", newLen);
-		if (!buf)
-		{
+	// Allocate buffer if needed
+	if (string == NULL || length == 0) {
+		length = tclLen + 1;
+		string = (char*)Allocate("Tcl_IoGetString", length);
+		if (!string) {
 			if (pbValid) *pbValid = FALSE;
 			return NULL;
 		}
 	}
 
-	// always save room for the NULL at the end
-	pBufEnd = buf + newLen - 1;
-	pTclEnd = tcl + tclLen;
-	
-	while ((tcl < pTclEnd) && (buf < pBufEnd))
-	{
-		byte = *tcl++;
-		if (!byte)
-		{
-			// An embedded NULL should terminate our translation
-			break;
-		}
-		else if (byte < 0x80)
-		{
-			// UTF-8 chars between 0x01 and 0x7F are equal to themselves.
+	buf = (unsigned char*)string;
+	unsigned char* pBufEnd = buf + length - 1;
+	unsigned char* pTclEnd = tcl + tclLen;
+
+	while (tcl < pTclEnd && buf < pBufEnd) {
+		unsigned char byte = *tcl++;
+
+		if (byte == 0) break; // Embedded NULL
+
+		if (byte < 0x80) {
 			*buf++ = byte;
 		}
-		else if (byte < 0xC2)
-		{
-			// 0x80-0xBF are invalid lead bytes, but just copy them over anyway.
+		else if (byte < 0xC2) {
 			valid = FALSE;
 			*buf++ = byte;
 		}
-		else if (byte < 0xE0)
-		{
-			if (tcl != pTclEnd && ((tcl[0] & 0xC0) == 0x80))
-			{
-				if (byte < 0xC2)
-				{
-					// C0, C1 lead bytes are invalid
-					valid = FALSE;
-					break;
-				}
-
-				// 2 byte character with valid trail byte
+		else if (byte < 0xE0) {
+			if (tcl < pTclEnd && (tcl[0] & 0xC0) == 0x80) {
 				uniChar = ((byte & 0x1F) << 6) | (tcl[0] & 0x3F);
-				if (uniChar > 255) uniChar = '?';
-				*buf++ = (unsigned char) uniChar;
+				*buf++ = (uniChar <= 255) ? (unsigned char)uniChar : '?';
 				tcl++;
 			}
-			else
-			{
-				// missing or invalid 2nd byte of a 2 byte sequence
+			else {
 				valid = FALSE;
 				break;
 			}
 		}
-		else if (byte < 0xF0)
-		{
-			if ((tcl + 1 < pTclEnd) && ((tcl[0] & 0xC0) == 0x80) && ((tcl[1] & 0xC0) == 0x80))
-			{
-				// 3 byte character with 2 valid trailing bytes...
-				// but no way to map this into an 8 bit char :(
-				// uniChar = (((byte & 0x0F) << 12) | ((tcl[0] & 0x3F) << 6) | (tcl[1] & 0x3F));
+		else if (byte < 0xF0) {
+			if (tcl + 1 < pTclEnd && (tcl[0] & 0xC0) == 0x80 && (tcl[1] & 0xC0) == 0x80) {
 				*buf++ = '?';
 				tcl += 2;
 			}
-			else
-			{
-				// missing or invalid 2nd or 3rd byte of a 3 byte sequence, just copy them
+			else {
 				valid = FALSE;
 				break;
 			}
 		}
-		else if (byte < 0xF5)
-		{
-			// NOTE: 0xF5-0xF7 are technically valid 4 byte sequences, but no unicode characters exist there
-			if ((tcl + 2 < pTclEnd) && ((tcl[0] & 0xC0) == 0x80) && ((tcl[1] & 0xC0) == 0x80) && ((tcl[2] & 0xC0) == 0x80))
-			{
-				// 4 byte character with 3 valid trailing bytes...
-				// but no way to map this into an 8 bit char!
+		else if (byte < 0xF5) {
+			if (tcl + 2 < pTclEnd &&
+				(tcl[0] & 0xC0) == 0x80 &&
+				(tcl[1] & 0xC0) == 0x80 &&
+				(tcl[2] & 0xC0) == 0x80) {
 				*buf++ = '?';
 				tcl += 3;
 			}
-			else
-			{
-				// missing or invalid 2nd, 3rd, or 4th byte of a 4 byte sequence
+			else {
 				valid = FALSE;
 				break;
 			}
 		}
-		else
-		{
-			// it's an invalid char
+		else {
 			valid = FALSE;
 			break;
 		}
 	}
-	
-	*buf = 0;
+
+	*buf = '\0';
+
 	if ((tcl < pTclEnd) && (buf == pBufEnd)) valid = FALSE;
 	if (pbValid && !valid) *pbValid = FALSE;
-	if (valid)
-	{
+
+	if (valid) {
 		return string;
 	}
-	Putlog(LOG_SYSTEM, _T("Error converting string: %s\r\n"), tclStart);
-	if (length == 0)
-	{
-		CopyMemory(string, tclStart, tclLen+1);
+
+	Putlog(LOG_SYSTEM, _T("Invalid UTF-8 sequence in Tcl string: %s"), tclStart);
+
+	// Fallback: copy original string if buffer was allocated
+	if (length > 0 && string) {
+		int copyLen = min(tclLen, length - 1);
+		CopyMemory(string, tclStart, copyLen);
+		string[copyLen] = '\0';
 		return string;
 	}
-	return tclStart;
+
+	return (char*)tclStart;
 }
 
 
@@ -932,6 +897,9 @@ DWORD Tcl_JobTimerProc(LPEVENT_COMMAND lpEvent, LPTIMER lpTimer)
 	//  Execute event
 	RunEvent(lpEvent);
 	Free(lpEvent->tszCommand);
+	// ExecTimer() frees only the LPTIMER struct when INFINITE is returned; it does
+	// not free lpTimerContext (lpEvent).  Free it here, matching Tcl_RunJob.
+	Free(lpEvent);
 	return INFINITE;
 }
 
@@ -1028,8 +996,7 @@ Tcl_Timer(LPTCL_INTERPRETER lpTclInterpreter,
 
 
 
-INT
-Tcl_Client(LPTCL_INTERPRETER lpTclInterpreter,
+INT Tcl_Client(LPTCL_INTERPRETER lpTclInterpreter,
                    Tcl_Interp *Interp,
                    UINT Objc,
                    Tcl_Obj *CONST Objv[])
@@ -1038,13 +1005,12 @@ Tcl_Client(LPTCL_INTERPRETER lpTclInterpreter,
   ONLINEDATA    OnlineData;
   LPTCL_DATA    lpTclData;
   LPTSTR      tszPath;
-  LPSTR      szCommand, szIp, szArgument;
+  LPSTR      szCommand, szArgument;
   TCHAR      *tpOffset;
-  CHAR      pBuffer[32], temp3[_MAX_PWD+1];
+  CHAR       temp3[_MAX_PWD+1];
   DOUBLE      dSpeed;
   INT        UserID, iResult, iReturn;
   UINT       i, n, iOffset;
-  struct in_addr  inaddr;
 
   iReturn  = TCL_ERROR;
   iResult  = -1;
@@ -1162,8 +1128,9 @@ Tcl_Client(LPTCL_INTERPRETER lpTclInterpreter,
             Tcl_SetWideIntObj(Object, OnlineData.i64TotalBytesTransfered);
             break;
           case TCL_SPEED:
-            dSpeed  = (OnlineData.dwIntervalLength && OnlineData.bTransferStatus ?
-              OnlineData.dwBytesTransfered / OnlineData.dwIntervalLength : 0.);
+			  dSpeed = (OnlineData.dwIntervalLength && OnlineData.bTransferStatus)
+				  ? (double)OnlineData.dwBytesTransfered / (double)OnlineData.dwIntervalLength
+				  : 0.0;
             Tcl_SetDoubleObj(Object, dSpeed);
             break;
           case TCL_CLIENTID:
@@ -1176,7 +1143,7 @@ Tcl_Client(LPTCL_INTERPRETER lpTclInterpreter,
             Tcl_SetLongObj(Object, OnlineData.dwOnlineTime);
             break;
           case TCL_TIMEIDLE:
-            Tcl_SetLongObj(Object, Time_DifferenceDW32(OnlineData.dwIdleTickCount, GetTickCount()) / 1000);
+            Tcl_SetLongObj(Object, (long)(((DWORD)SafeGetTickCount64() - OnlineData.dwIdleTickCount) / 1000));
             break;
           case TCL_HOSTNAME:
             Tcl_IoSetStringObj(Object, OnlineData.szHostName, -1);
@@ -1187,18 +1154,22 @@ Tcl_Client(LPTCL_INTERPRETER lpTclInterpreter,
           case  TCL_ACTION:
             Tcl_IoSetStringObj(Object, OnlineData.tszAction, -1);
             break;
-          case TCL_IP:
-            inaddr.s_addr  = OnlineData.ulClientIp;
-            szIp  = inet_ntoa(inaddr);
-            if (! szIp) szIp = "";
-            Tcl_SetStringObj(Object, szIp, -1);
-            break;
-		  case TCL_DATAIP:
-			  inaddr.s_addr  = OnlineData.ulDataClientIp;
-			  szIp  = inet_ntoa(inaddr);
-			  if (! szIp) szIp = "";
-			  Tcl_SetStringObj(Object, szIp, -1);
+		  case TCL_IP: {
+			  IN_ADDR addr;
+			  char ip[INET_ADDRSTRLEN] = { 0 };
+			  addr.S_un.S_addr = OnlineData.ulClientIp; // If host-order: htonl(...)
+			  if (InetNtopA(AF_INET, &addr, ip, sizeof(ip)) == NULL) ip[0] = '\0';
+			  Tcl_SetStringObj(Object, ip, -1);
 			  break;
+		  }
+		  case TCL_DATAIP: {
+			  IN_ADDR addr;
+			  char ip[INET_ADDRSTRLEN] = { 0 };
+			  addr.S_un.S_addr = OnlineData.ulDataClientIp; // If host-order: htonl(...)
+			  if (InetNtopA(AF_INET, &addr, ip, sizeof(ip)) == NULL) ip[0] = '\0';
+			  Tcl_SetStringObj(Object, ip, -1);
+			  break;
+		  }
 		  case TCL_SERVICE:
 			  Tcl_IoSetStringObj(Object, OnlineData.tszServiceName, -1);
 			  break;
@@ -1308,8 +1279,7 @@ Tcl_Client(LPTCL_INTERPRETER lpTclInterpreter,
   }
 
   //  Apply result
-  sprintf(pBuffer, "%i", iResult);
-  Tcl_AppendResult(Interp, pBuffer, NULL);
+  Tcl_SetObjResult(Interp, Tcl_NewIntObj(iResult));
 
   return iReturn;
 }
@@ -1396,7 +1366,7 @@ static BOOL Tcl_List_Print(LPLISTING lpListing, LPTSTR tszFileName, BOOL bDotDir
 						   LPFILEINFO lpFileInfo, BOOL isDir, DWORD dwMountIndexes, LPVIRTUALINFO lpVirtualInfo)
 {
 	Tcl_Interp      *lpInterp;
-	Tcl_Obj         *lpResult, *lpNew, *lpList;
+	Tcl_Obj         *lpResult = NULL, *lpNew, *lpList = NULL;
 	LPTSTR		     tszTemp;
 	TCHAR            tszRealPath[MAX_PATH+1];
 	DWORD            n, m;
@@ -1531,6 +1501,7 @@ static BOOL Tcl_List_Print(LPLISTING lpListing, LPTSTR tszFileName, BOOL bDotDir
 		}
 	}
 	if (Tcl_ListObjAppendElement(lpInterp, lpResult, lpList) != TCL_OK) goto FAILED;
+	lpList = NULL; // ownership transferred to lpResult
 
 
 	// context list
@@ -1549,6 +1520,7 @@ static BOOL Tcl_List_Print(LPLISTING lpListing, LPTSTR tszFileName, BOOL bDotDir
 		if (Tcl_ListObjAppendElement(lpInterp, lpList, lpNew) != TCL_OK) goto FAILED;
 	}
 	if (Tcl_ListObjAppendElement(lpInterp, lpResult, lpList) != TCL_OK) goto FAILED;
+	lpList = NULL; // ownership transferred to lpResult
 
 	if (!(lpNew = Tcl_NewIntObj(lpFileInfo->dwUploadTimeInMs)))	goto NO_MEMORY;
 	if (Tcl_ListObjAppendElement(lpInterp, lpResult, lpNew) != TCL_OK) goto FAILED;
@@ -1559,9 +1531,15 @@ static BOOL Tcl_List_Print(LPLISTING lpListing, LPTSTR tszFileName, BOOL bDotDir
 
 NO_MEMORY:
 	Tcl_ResetResult(lpInterp);
-	Tcl_SetResult(lpInterp, _T("Out of Memory"), NULL);
+	Tcl_SetObjResult(lpInterp, Tcl_NewStringObj("Out of Memory", -1));
 
 FAILED:
+	// Free any partially-built Tcl objects that were never stored (refcount 0).
+	// lpList is only non-NULL when the append to lpResult failed; in the success
+	// path lpList = NULL is set immediately after each successful append so that
+	// Tcl_DecrRefCount(lpResult) does not double-free it below.
+	if (lpList)   { Tcl_DecrRefCount(lpList);   }
+	if (lpResult) { Tcl_DecrRefCount(lpResult); }
 	lpListing->lpTclDirList->iResult = TCL_ERROR;
 	return FALSE;
 }
@@ -3878,6 +3856,7 @@ Tcl_Variable(LPTCL_INTERPRETER lpTclInterpreter,
         if (! lpMemory)
         {
           LeaveCriticalSection(&csGlobalVariables);
+          Free(lpVariable);
           return TCL_ERROR;
         }
         dwGlobalVariablesSize  += 128;
@@ -4483,12 +4462,13 @@ VOID Tcl_DeleteInterpreter(LPTCL_INTERPRETER lpTclInterpreter)
 	Tcl_DeleteInterp((Tcl_Interp *)lpTclInterpreter->lpInterp);
 	Free(lpTclInterpreter);
 
-	// this is supposed to cleanup all memory TCL is using for the thread, only do this when
-	// debugging since keeping the infrastructure is fine when just doing a rehash.
-	if (bDebugTclInterpreters)
-	{
-		Tcl_FinalizeThread();
-	}
+	// Always release per-thread Tcl state.  Without this, stale thread-local hash
+	// tables and encoding structures from the deleted interpreter survive into the
+	// next Tcl_CreateInterp() call on the same thread (e.g. after a rehash), causing
+	// heap corruption.  Tcl_FinalizeThread() is safe to call before creating a new
+	// interpreter; thread exit handlers (lTclInterps counter) are re-registered by
+	// Tcl_GetInterpreter() when the replacement interpreter is created.
+	Tcl_FinalizeThread();
 }
 
 
@@ -4500,8 +4480,9 @@ VOID Tcl_InterpreterDestructor(VOID)
 
 	if (lpTclInterpreter)
 	{
+		// Tcl_DeleteInterpreter() now calls Tcl_FinalizeThread() unconditionally;
+		// do not call it a second time here.
 		Tcl_DeleteInterpreter(lpTclInterpreter);
-		Tcl_FinalizeThread();
 		TlsSetValue(dwTclInterpreterTlsIndex, 0);
 	}
 }
@@ -4544,7 +4525,7 @@ LPTCL_INTERPRETER Tcl_GetInterpreter(BOOL bCreate)
 		return NULL;
 	}
 	
-	wsprintfA(pBuffer, "%u-%u-%u", GetCurrentThreadId(), (DWORD)GetCurrentFiber(), GetTickCount());
+	wsprintfA(pBuffer, "%u-%u-%u", GetCurrentThreadId(), (DWORD)GetCurrentFiber(), SafeGetTickCount64());
 	//  Create interpreter
 	lpTclInterpreter  = (LPTCL_INTERPRETER)Allocate("TCL:Interpreter", sizeof(TCL_INTERPRETER));
 	if (! lpTclInterpreter) return NULL;
@@ -4919,7 +4900,6 @@ BOOL Tcl_ModuleInit(VOID)
 	if (! InitializeCriticalSectionAndSpinCount(&csGlobalVariables, 100)) return TRUE;
 	if (! InitializeCriticalSectionAndSpinCount(&csTclWaitObjectList, 100)) return TRUE;
 
-	Tcl_RegisterHandleLockFunctions(AcquireHandleLock, ReleaseHandleLock);
 	if (! GetModuleFileNameA(NULL, szBuffer, _MAX_PATH)) return TRUE;
 	Tcl_FindExecutable(szBuffer);
 	//  Allocate Tls index
@@ -4927,13 +4907,29 @@ BOOL Tcl_ModuleInit(VOID)
 	if (dwTclInterpreterTlsIndex == TLS_OUT_OF_INDEXES) return TRUE;
 
 	Tcl_GetVersion(&iMajor, &iMinor, &iPatch, NULL);
-	if ((iMajor < IO_TCL_MAJOR_VER) || (iMinor != IO_TCL_MINOR_VER) || (iPatch != IO_TCL_PATCH_VER))
+
+	// Require at least major version IO_TCL_MAJOR_VER.  Any minor/patch within
+	// the same major is accepted so that Tcl 9.0.3, 9.1.x, etc. work without
+	// a rebuild.  Reject anything older (Tcl 8.x and below).
+	if (iMajor < IO_TCL_MAJOR_VER)
 	{
-		// this won't ever get printed since it would be queued as a job...
-		Putlog(LOG_ERROR, _T("TCL Version mismatch: found %d.%d.%d expected %d.%d.%d\r\n"),
-			iMajor, iMinor, iPatch, IO_TCL_MAJOR_VER, IO_TCL_MINOR_VER, IO_TCL_PATCH_VER);
+		Putlog(LOG_ERROR, _T("TCL: version %d.%d.%d is too old; ioFTPD requires Tcl %d.x or later\r\n"),
+			iMajor, iMinor, iPatch, IO_TCL_MAJOR_VER);
 		SetLastError(ERROR_TCL_VERSION);
 		return TRUE;
+	}
+
+	// Warn but continue if a newer major version is loaded (API may differ).
+	if (iMajor > IO_TCL_MAJOR_VER)
+	{
+		Putlog(LOG_GENERAL,
+			_T("TCL: warning: loaded version %d.%d.%d is newer than tested %d.%d.%d; ")
+			_T("verify script compatibility before deploying.\r\n"),
+			iMajor, iMinor, iPatch, IO_TCL_MAJOR_VER, IO_TCL_MINOR_VER, IO_TCL_PATCH_VER);
+	}
+	else
+	{
+		Putlog(LOG_GENERAL, _T("TCL: loaded version %d.%d.%d\r\n"), iMajor, iMinor, iPatch);
 	}
 
 	lpInterp  = Tcl_CreateInterp();
@@ -4944,7 +4940,7 @@ BOOL Tcl_ModuleInit(VOID)
 	}
 	if (Tcl_Init(lpInterp))
 	{
-		Putlog(LOG_ERROR, _T("TCL Library (/lib dir) error - Need version %d.%d.%d.\r\n"), IO_TCL_MAJOR_VER, IO_TCL_MINOR_VER, IO_TCL_PATCH_VER);
+		Putlog(LOG_ERROR, _T("TCL Library (/lib dir) error - Need version %d.x or later.\r\n"), IO_TCL_MAJOR_VER);
 		Tcl_DeleteInterp(lpInterp);
 		Tcl_Finalize();
 		SetLastError(ERROR_TCL_VERSION);
@@ -4973,6 +4969,23 @@ VOID Tcl_ModuleDeInit(VOID)
 {
 	LPTCL_WAITOBJECT  lpWaitObject;
 	DWORD n;
+
+	//  Free global variables table (set via Tcl_Variable SET command)
+	EnterCriticalSection(&csGlobalVariables);
+	if (lpGlobalVariables)
+	{
+		for (n = 0; n < dwGlobalVariables; n++)
+		{
+			if (lpGlobalVariables[n]->szTclStr) Free(lpGlobalVariables[n]->szTclStr);
+			Free(lpGlobalVariables[n]);
+		}
+		Free(lpGlobalVariables);
+		lpGlobalVariables    = NULL;
+		dwGlobalVariables    = 0;
+		dwGlobalVariablesSize = 0;
+	}
+	LeaveCriticalSection(&csGlobalVariables);
+	DeleteCriticalSection(&csGlobalVariables);
 
 	//  Free resources
 	TlsFree(dwTclInterpreterTlsIndex);

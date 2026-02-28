@@ -18,11 +18,17 @@
  * Free Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston,
  * MA 02110-1301, USA.
  */
+#ifdef __cplusplus
+extern "C" {
+#endif
 
+// Include necessary headers
+#include <windows.h>
 
 typedef struct _LINEBUFFER
 {
 	struct _PACKAGETRANSFER *lpTransfer;
+	volatile LONG            lRefCount;          // 1 (socket owner) + 1 per in-flight ReceiveLine op
 	VOID				     (*lpCallBack)(LPVOID, LPSTR, DWORD, ULONG);
 	LPVOID				     lpContext;
 
@@ -36,6 +42,7 @@ typedef struct _LINEBUFFER
 typedef struct _SECURITY
 {
 	CRITICAL_SECTION            csLock;
+	volatile LONG               lRefCount;       // reference count: 1 (socket owner) + 1 per active TLS callback
 	SSL                        *SSL;
 	BIO                        *NetworkBio;
 	BIO                        *InternalBio;
@@ -58,6 +65,7 @@ typedef struct _SOCKET_OPTIONS
 typedef struct _SENDQUICK
 {
 	struct _PACKAGETRANSFER *lpTransfer;
+	volatile LONG            lRefCount;          // 1 (socket owner) + 1 per in-flight IOCP op
 	VOID				     (*lpCallBack)(LPVOID, LPSTR, DWORD);
 	LPVOID				     lpContext;
 	SOCKETOVERLAPPED         Overlapped;
@@ -98,7 +106,15 @@ typedef struct _IOSOCKET
 #define SOCKET_PRIORITY			2
 #define IO_SOCKET				298
 
-typedef void (*TRANSFERPROC)(LPPACKAGETRANSFER, DWORD, DWORD);
+#ifndef DWORD
+typedef unsigned long DWORD;
+#endif
+
+
+//typedef void (*TRANSFERPROC)(LPPACKAGETRANSFER, DWORD, DWORD);
+typedef void (*TRANSFERPROC)(struct _PACKAGETRANSFER* pTransfer, DWORD dwParam1, DWORD dwParam2);
+
+
 
 typedef struct _IOBUFFER
 {
@@ -119,9 +135,9 @@ typedef struct _IOBUFFER
 
 typedef struct _TRANSFERRATE
 {
-	DWORD			dwBytesTransferred;
-	DWORD			dwTickCount;
-	VOID			(*lpCallBack)(LPVOID, DWORD, DWORD, DWORD);
+	ULONGLONG		dwBytesTransferred;
+	ULONGLONG		dwTickCount;
+	VOID			(*lpCallBack)(LPVOID, ULONGLONG, ULONGLONG, ULONGLONG);
 
 } TRANSFERRATE, * LPTRANSFERRATE;
 
@@ -131,15 +147,16 @@ typedef struct _PACKAGETRANSFER
 	LPTIMER				lpTimer;
 	LPIOBUFFER			lpIoBuffer;
 	DWORD				dwBuffer;
-	DWORD				dwLastError;
+	volatile DWORD      dwLastError;    // Fix #5: written by timer thread; volatile for compiler visibility
 	ULONG               ulOpenSslError;
 	LPTRANSFERRATE		lpTransferRate;
 	INT64               i64Total;
-	DWORD volatile		dwTime;
+	ULONGLONG volatile	dwTime;
 	BOOL                bNoFree;
 	BOOL                bClosed; // Set to TRUE when a socket indicates it's been closed
 	BOOL                bQuick;  // Set to TRUE if SendQuick which implies different overlapped structure
-	BOOL                bTimedOut;
+	volatile BOOL       bTimedOut;      // Fix #5: written by timer thread; volatile for compiler visibility
+	volatile LONG       lCompleted;     // Fix #6: CAS gate — ensures Complete/Error runs exactly once
 	VOID				(*lpCallBack)(LPVOID, DWORD, INT64, ULONG);
 	LPVOID				lpContext;
 	TRANSFERPROC        lpContinueProc; // When send/receive to socket completes call this function...
@@ -180,6 +197,7 @@ BOOL ioCloseSocket(LPIOSOCKET lpSocket, BOOL bNoLinger);
 BOOL ioDeleteSocket(LPIOSOCKET lpSocket, BOOL bNoLinger);
 //	Secure socket api
 BOOL Secure_Init_Socket(LPIOSOCKET lpSocket, LPIOSERVICE lpService, DWORD dwCreationFlags);
+VOID Security_Release(LPSECURITY lpSecure);
 BOOL Secure_Create_Ctx(LPTSTR tszService, LPSTR szCertificateName, const SSL_METHOD *Method, SSL_CTX **ppCtx);
 VOID Secure_Free_Ctx(SSL_CTX *pCtx);
 BOOL Secure_Delete_Cert(LPTSTR tszCertificateName);
@@ -201,7 +219,7 @@ BOOL WSAAsyncSelectContinue(LPIOSOCKET lpIoSocket, LPVOID lpProc, LPVOID lpConte
 //	Transmit package API
 BOOL TransmitPackage_Init(BOOL bFirstInitialization);
 VOID TransmitPackage_DeInit(VOID);
-VOID TransmitPackages(LPIOSOCKET lpSocket, LPIOBUFFER lpBuffer, DWORD dwBuffer, VOID (* lpTransferRateCallBack)(LPVOID, DWORD, DWORD, DWORD),
+VOID TransmitPackages(LPIOSOCKET lpSocket, LPIOBUFFER lpBuffer, DWORD dwBuffer, VOID (* lpTransferRateCallBack)(LPVOID, ULONGLONG, ULONGLONG, ULONGLONG),
 					  VOID (* lpCallBack)(LPVOID, DWORD, INT64, ULONG), LPVOID lpContext);
 VOID TransmitPackage_ReadSocket(LPPACKAGETRANSFER lpTransfer, DWORD dwBytesRead, DWORD dwLastError);
 VOID TransmitPackage_WriteSocket(LPPACKAGETRANSFER lpTransfer, DWORD dwBytesRead, DWORD dwLastError);
@@ -220,3 +238,7 @@ extern LPFN_GETACCEPTEXSOCKADDRS	GetAcceptSockAddrs;
 
 extern BOOL volatile bLogOpenSslErrors;
 extern DWORD dwDeadlockPort;
+
+#ifdef __cplusplus
+}
+#endif

@@ -90,7 +90,7 @@ DWORD RegisterClient(PCONNECTION_INFO pConnectionInfo, LPFTPUSER lpUser)
   lpClient->lpUser     = lpUser;
   lpClient->dwLoginTime  = GetTickCount(); // unused now
   //  Update static structure
-  lpClient->Static.dwIdleTickCount  = GetTickCount();
+  lpClient->Static.dwIdleTickCount  = (DWORD)SafeGetTickCount64();
   lpClient->Static.dwOnlineTime = (DWORD) time((time_t*)NULL) ;
   lpClient->Static.Uid    = -1;
   lpClient->Static.ulClientIp  = pConnectionInfo->ClientAddress.sin_addr.s_addr;
@@ -228,7 +228,7 @@ LRESULT ReleasePath(LPTSTR tszRealPath, LPTSTR tszVirtualPath)
 LRESULT GetOnlineData(ONLINEDATA *lpOnlineData, DWORD dwClientId)
 {
   LPCLIENT    lpClient;
-  DWORD       dwTickCount, dwLast;
+  ULONGLONG   dwTickCount, dwLast;
   PONLINEDATA lpOnline;
 
   lpClient  = LockClient(dwClientId);
@@ -246,8 +246,8 @@ LRESULT GetOnlineData(ONLINEDATA *lpOnlineData, DWORD dwClientId)
   lpOnline = (PONLINEDATA) lpOnlineData;
   if (lpOnline->bTransferStatus)
   {
-	  dwTickCount = GetTickCount();
-	  dwTickCount = Time_DifferenceDW32(dwLast, dwTickCount);
+	  dwTickCount = SafeGetTickCount64();
+	  dwTickCount = Time_DifferenceDW64(dwLast, dwTickCount);
 	  if (dwTickCount > ZERO_SPEED_DELAY)
 	  {
 		  lpOnline->dwIntervalLength  = 1; // so bytes/time doesn't generate an error
@@ -262,7 +262,7 @@ LRESULT GetOnlineData(ONLINEDATA *lpOnlineData, DWORD dwClientId)
 LRESULT SeekOnlineData(ONLINEDATA *lpOnlineData, DWORD dwClientId)
 {
   LPCLIENT    lpClient;
-  DWORD       dwTickCount, dwLast;
+  ULONGLONG   dwTickCount, dwLast;
   PONLINEDATA lpOnline;
 
   //  Find available user
@@ -283,8 +283,8 @@ LRESULT SeekOnlineData(ONLINEDATA *lpOnlineData, DWORD dwClientId)
 	  lpOnline = (PONLINEDATA) lpOnlineData;
 	  if (lpOnline->bTransferStatus)
 	  {
-		  dwTickCount = GetTickCount();
-		  dwTickCount = Time_DifferenceDW32(dwLast, dwTickCount);
+		  dwTickCount = SafeGetTickCount64();
+		  dwTickCount = Time_DifferenceDW64(dwLast, dwTickCount);
 		  if (dwTickCount > ZERO_SPEED_DELAY)
 		  {
 			 lpOnline->dwIntervalLength  = 1; // so bytes/time doesn't generate an error
@@ -439,14 +439,15 @@ BOOL UpdateClientData(DWORD dwDataType, DWORD dwClientId, ...)
   LPUSERFILE    lpUserFile;
   PDATACHANNEL  lpData;
   LPHOSTINFO    lpHostInfo;
-  LPIOSERVICE    lpService;
-  LPCLASS      lpClass;
-  LPCLIENT    lpClient, lpClient2;
-  va_list      Arguments;
-  LPSTR      szHostName, szIdent;
-  INT        iCount;
-  DWORD      dwBytesTransferred, dwType, n;
-  BOOL      bReturn, bTransferStatus;
+  LPIOSERVICE   lpService;
+  LPCLASS       lpClass;
+  LPCLIENT      lpClient, lpClient2;
+  va_list       Arguments;
+  LPSTR         szHostName, szIdent;
+  INT           iCount;
+  ULONGLONG     dwBytesTransferred;
+  DWORD         dwType, n;
+  BOOL          bReturn, bTransferStatus;
 
   bReturn  = FALSE;
   //  Get offset for arguments
@@ -457,13 +458,15 @@ BOOL UpdateClientData(DWORD dwDataType, DWORD dwClientId, ...)
   switch (dwDataType)
   {
   case DATA_TRANSFER_UPDATE:
+  {
 	  //  Update transfer stats
-	  dwBytesTransferred  = va_arg(Arguments, UINT32);
-	  lpClient->Static.dwBytesTransfered      = dwBytesTransferred;
-	  lpClient->Static.dwIntervalLength      = va_arg(Arguments, DWORD);
-	  lpClient->Static.i64TotalBytesTransfered  += dwBytesTransferred;
-	  lpClient->dwTransferLastUpdated = va_arg(Arguments, DWORD);
+	  dwBytesTransferred = va_arg(Arguments, ULONGLONG);
+	  lpClient->Static.dwBytesTransfered = (DWORD)dwBytesTransferred;
+	  lpClient->Static.dwIntervalLength = (DWORD)va_arg(Arguments, ULONGLONG);
+	  lpClient->Static.i64TotalBytesTransfered += dwBytesTransferred;
+	  lpClient->dwTransferLastUpdated = va_arg(Arguments, ULONGLONG);
 	  break;
+  }
   case DATA_TRANSFER:
     if ((bTransferStatus = va_arg(Arguments, DWORD)) == (DWORD)-1)
     {
@@ -487,7 +490,7 @@ BOOL UpdateClientData(DWORD dwDataType, DWORD dwClientId, ...)
     lpClient->Static.dwIntervalLength      = 1;
     lpClient->Static.dwBytesTransfered      = 0;
     lpClient->Static.i64TotalBytesTransfered  = 0;
-	lpClient->dwTransferLastUpdated = GetTickCount();
+	lpClient->dwTransferLastUpdated = SafeGetTickCount64();
     //  Increase transfer count
     InterlockedIncrement(&lpClient->lpService->lTransfers);
 
@@ -623,7 +626,7 @@ BOOL UpdateClientData(DWORD dwDataType, DWORD dwClientId, ...)
   case DATA_ACTION:
     //  Update Last Action
 	  _tcsncpy(lpClient->Static.tszAction, (LPSTR)va_arg(Arguments, LPSTR), 64);
-    lpClient->Static.dwIdleTickCount  = va_arg(Arguments, DWORD);
+    lpClient->Static.dwIdleTickCount  = (DWORD)va_arg(Arguments, ULONGLONG);
     break;
   case DATA_NOOP:
 	//  Just update timestamp
@@ -632,7 +635,7 @@ BOOL UpdateClientData(DWORD dwDataType, DWORD dwClientId, ...)
 		  // not transfering, so record the NOOP
 		  _tcsncpy(lpClient->Static.tszAction, (LPSTR)va_arg(Arguments, LPSTR), 64);
 	  }
-	  lpClient->Static.dwIdleTickCount  = va_arg(Arguments, DWORD);
+	  lpClient->Static.dwIdleTickCount  = (DWORD)va_arg(Arguments, ULONGLONG);
 	  break;
   case DATA_IDENT:
     //  Update client's identity
@@ -670,7 +673,8 @@ VOID GetHostClass(LPHOSTINFO lpHostInfo)
   LPHOSTCLASS lpHostClass;
   LPSTR       szHostName;
   LPRULE      lpRule;
-  DWORD      dwHostName, dwTicks;
+  DWORD		  dwHostName;
+  ULONGLONG   dwTicks;
   struct in_addr  InetAddress;
   INT        iResult;
   CHAR        szObscuredHost[MAX_HOSTNAME];
@@ -689,8 +693,8 @@ VOID GetHostClass(LPHOSTINFO lpHostInfo)
   {
 	  if (!IpHasKnocked(lpHostInfo->NetworkAddress, lpHostInfo->dwNetworkAddress))
 	  {
-		  dwTicks = GetTickCount();
-		  if (Time_DifferenceDW32(lpHostInfo->dwLastUnMatchedLogTime, dwTicks) > lpHostInfo->dwLastUnMatchedLogDelay * 60 * 1000)
+		  dwTicks = SafeGetTickCount64();
+		  if (Time_DifferenceDW64(lpHostInfo->dwLastUnMatchedLogTime, dwTicks) > lpHostInfo->dwLastUnMatchedLogDelay * 60 * 1000)
 		  {
 			  if (lpHostInfo->dwLastUnMatchedLogDelay < dwMaxLogSuppression)
 			  {
@@ -750,8 +754,8 @@ VOID GetHostClass(LPHOSTINFO lpHostInfo)
   else
   {
 	  //  Log event
-	  dwTicks = GetTickCount();
-	  if (Time_DifferenceDW32(lpHostInfo->dwLastBadHostLogTime, dwTicks) > lpHostInfo->dwLastBadHostLogDelay * 60 * 1000)
+	  dwTicks = SafeGetTickCount64();
+	  if (Time_DifferenceDW64(lpHostInfo->dwLastBadHostLogTime, dwTicks) > lpHostInfo->dwLastBadHostLogDelay * 60 * 1000)
 	  {
 		  if (lpHostInfo->dwLastBadHostLogDelay < dwMaxLogSuppression)
 		  {

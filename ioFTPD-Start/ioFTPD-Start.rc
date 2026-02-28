@@ -93,7 +93,7 @@ END
 
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
-IDI_ICON1               ICON                    "C:\\Projects\\ioFTPD6\\6.3.0\\src\\ioFTPD.ico"
+IDI_ICON1               ICON                    "C:\\Dev\\Sources\\ioFTPD\\src\\ioFTPD.ico"
 #endif    // English (U.S.) resources
 /////////////////////////////////////////////////////////////////////////////
 

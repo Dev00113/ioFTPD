@@ -19,14 +19,17 @@
  * MA 02110-1301, USA.
  */
 
+#define _WIN32_WINNT 0x0600  // Vista minimum
+//#define	_WIN32_WINNT	0x0501
 
-#define	_WIN32_WINNT	0x0501
-// #define	_WIN32_WINNT	0x0403
 #include <Tchar.h>
 #include <Winsock2.h>
 #include <MsWsock.h>
 #include <Windows.h>
 #include <errno.h>
+
+// Tick count helper for uptime tracking
+#include "TickCountHelper.h"
 
 #include "openssl/bio.h"
 #include "openssl/err.h"
@@ -248,6 +251,7 @@ BOOL FTP_List(LPFTPUSER lpUser, IO_STRING *Args);
 BOOL FTP_Nlist(LPFTPUSER lpUser, IO_STRING *Args);
 BOOL FTP_Stat(LPFTPUSER lpUser, IO_STRING *Args);
 BOOL FTP_MLSD(LPFTPUSER lpUser, IO_STRING *Args);
+BOOL FTP_MLST(LPFTPUSER lpUser, IO_STRING *Args);   // RFC 3659 §7 single-entry listing
 BOOL List_RunSearch(LPFTPUSER lpUser, LPTSTR tszVirtual, LPTSTR tszSearchFor);
 VOID FTP_ContinueListing(LPFTPUSER lpUser);
 VOID FTP_AbortListing(LPFTPUSER lpUser);

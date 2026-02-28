@@ -64,7 +64,9 @@ DWORD DataCopy_OnlineData(LPDC_ONLINEDATA lpdcOnlineData, LPVOID lpBase)
 	LPCLIENT		lpClient;
 	PONLINEDATA		lpOnlineData;
 	LPTSTR			tszRealPath, tszRealDataPath;
-	DWORD			dwReturn, dwTickCount, dwLastCount;
+	DWORD			dwReturn;
+	ULONGLONG       dwLastCount;
+	ULONGLONG		dwTickCount;
 
 	if (lpdcOnlineData->iOffset-- < -1) return (DWORD)-1;
 	//	Find next client
@@ -91,8 +93,8 @@ DWORD DataCopy_OnlineData(LPDC_ONLINEDATA lpdcOnlineData, LPVOID lpBase)
 
 	if (lpOnlineData->bTransferStatus)
 	{
-		dwTickCount = GetTickCount();
-		dwTickCount = Time_DifferenceDW32(dwLastCount, dwTickCount);
+		dwTickCount = SafeGetTickCount64();
+		dwTickCount = Time_DifferenceDW64(dwLastCount, dwTickCount);
 		if (dwTickCount > ZERO_SPEED_DELAY)
 		{
 			lpOnlineData->dwIntervalLength = 1; // so bytes/time doesn't generate an error
@@ -550,7 +552,7 @@ LRESULT DataCopy_Allocate(DWORD dwProcessId, HANDLE hSharedMemory, DWORD dwType)
 			lpRequest->wStatus	= ER_AVAILABLE;
 			lpRequest->wType	= (WORD)dwType;
 			lpRequest->lpMessage	= lpMessage;
-			lpRequest->dwTickCount	= GetTickCount();
+			lpRequest->dwTickCount	= SafeGetTickCount64();
 			lpRequest->lpUserFileReqList[HEAD] = NULL;
 			lpRequest->lpUserFileReqList[TAIL] = NULL;
 
@@ -561,7 +563,7 @@ LRESULT DataCopy_Allocate(DWORD dwProcessId, HANDLE hSharedMemory, DWORD dwType)
 			//	Get ghost entries (allocated for longer than 10minutes)
 			while (lpExchangeRequestList[HEAD] &&
 				lpExchangeRequestList[HEAD]->wStatus == ER_AVAILABLE &&
-				Time_DifferenceDW32(lpExchangeRequestList[HEAD]->dwTickCount, lpRequest->dwTickCount) > 600000)
+				Time_DifferenceDW64(lpExchangeRequestList[HEAD]->dwTickCount, lpRequest->dwTickCount) > 600000)
 			{
 				if (! lpGhost[HEAD]) lpGhost[HEAD]	= lpExchangeRequestList[HEAD];
 				lpGhost[TAIL]	= lpExchangeRequestList[HEAD];

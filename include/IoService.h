@@ -59,7 +59,7 @@ typedef struct _IODEVICE
 	BOOL				bActive;
 	BOOL				bDisabled;
 	LONG volatile		lShareCount;
-	DWORD				dwLastUpdate;
+	ULONGLONG			dwLastUpdate;
 	DWORD               dwLastConfigCounter;
 	BOOL				bRandomizePorts;
 	LONG volatile		lLastPort;

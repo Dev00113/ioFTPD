@@ -36,7 +36,7 @@ VOID SystemTimeToLocalTime(LPSYSTEMTIME lpUniversalTime, LPSYSTEMTIME lpLocalTim
 
 INT Time_Compare(LPTIME_STRUCT lpStartTime, LPTIME_STRUCT lpStopTime)
 {
-	DWORD	dwTickCount;
+	ULONGLONG	dwTickCount;
 
 	if (i64TicksPerSecond)
 	{
@@ -45,7 +45,7 @@ INT Time_Compare(LPTIME_STRUCT lpStartTime, LPTIME_STRUCT lpStopTime)
 	}
 	else
 	{
-		dwTickCount	= GetTickCount();
+		dwTickCount	= SafeGetTickCount64();
 		//	Check timer 1wrapping
 		if (lpStartTime->i64TickCount > dwTickCount)
 		{
@@ -74,10 +74,9 @@ DOUBLE Time_Difference(LPTIME_STRUCT lpStartTime, LPTIME_STRUCT lpStopTime)
 
 
 
-DWORD Time_DifferenceDW32(DWORD dwStart, DWORD dwStop)
+ULONGLONG Time_DifferenceDW64(ULONGLONG start, ULONGLONG end)
 {
-	return (dwStart > dwStop ?
-		(0xFFFFFFFFL - dwStart) + 1 + dwStop : dwStop - dwStart);
+	return (end >= start) ? (end - start) : 0;
 }
 
 
@@ -87,7 +86,7 @@ VOID Time_Read(LPTIME_STRUCT lpTime)
 	{
 		QueryPerformanceCounter((PLARGE_INTEGER)&lpTime->i64TickCount);
 	}
-	else lpTime->i64TickCount	= GetTickCount();
+	else lpTime->i64TickCount	= SafeGetTickCount64();
 }
 
 

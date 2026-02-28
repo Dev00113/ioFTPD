@@ -159,18 +159,29 @@ static INT32 User_StandardCreate(LPTSTR tszUserName, INT32 Gid)
   tpOffset = tszFileName + iLen;
 
   tszGroupName = NULL;
-  if (Gid != -1 && (tszGroupName = Gid2Group(Gid)) && (iLen + 8 + _tcslen(tszSourceFile) < MAX_PATH))
+  if (Gid != -1 && (tszGroupName = Gid2Group(Gid)))
   {
-	  _stprintf(tpOffset, _T("Default=%s"), tszGroupName);
-	  if (! CopyFile(tszSourceFile, tszTargetFile, FALSE))
+	  // Guard: "Default=" (8 chars) + groupName + null must fit in remaining buffer.
+	  // Previous code compared against _tcslen(tszSourceFile) instead of tszGroupName —
+	  // that was wrong and could allow overflow when the group name is longer than the
+	  // source path.
+	  if (iLen + 8 + _tcslen(tszGroupName) < MAX_PATH)
 	  {
-		  tszGroupName = NULL;
+		  _stprintf_s(tpOffset, MAX_PATH - iLen, _T("Default=%s"), tszGroupName);
+		  if (! CopyFile(tszSourceFile, tszTargetFile, FALSE))
+		  {
+			  tszGroupName = NULL;
+		  }
+	  }
+	  else
+	  {
+		  tszGroupName = NULL;  // path would overflow; fall through to Default.User
 	  }
   }
 
   if (!tszGroupName && (iLen + 12 < MAX_PATH))
   {
-	  _stprintf(tpOffset, _T("Default.User"));
+	  _stprintf_s(tpOffset, MAX_PATH - iLen, _T("Default.User"));
 
 	  if (! CopyFile(tszSourceFile, tszTargetFile, FALSE))
 	  {
@@ -208,8 +219,9 @@ static INT32 User_StandardCreate(LPTSTR tszUserName, INT32 Gid)
   }
   else
   {
-    //  todo: really should verify there is room in string...
-	  _stprintf(tpOffset, _T("%i"), iReturn);
+	  // A UID is at most 10 decimal digits + null = 11 chars.  iLen was checked
+	  // above when building the template path, so MAX_PATH - iLen > 11.
+	  _stprintf_s(tpOffset, MAX_PATH - iLen, _T("%i"), iReturn);
 	  //  Move file
 	  if (! MoveFileEx(tszTargetFile, tszSourceFile, MOVEFILE_REPLACE_EXISTING))
 	  {
@@ -309,7 +321,7 @@ BOOL UserFile2Ascii(LPBUFFER lpBuffer, LPUSERFILE lpUserFile)
 static INT User_StandardRead(LPTSTR tszFileName, LPUSERFILE lpUserFile, BOOL bCreate)
 {
   LPUSERFILE_CONTEXT  lpContext;
-  DWORD        dwFileSize, dwBytesRead, dwError;
+  DWORD        dwFileSize, dwFileSizeHigh, dwBytesRead, dwChunk, dwError;
   PCHAR        pBuffer;
   INT          iReturn;
 
@@ -330,12 +342,29 @@ static INT User_StandardRead(LPTSTR tszFileName, LPUSERFILE lpUserFile, BOOL bCr
     goto DONE;
   }
 
-  //  Get filesize
-  if ((dwFileSize = GetFileSize(lpContext->hFileHandle, NULL)) == INVALID_FILE_SIZE) goto DONE;
+  //  Get filesize — use the two-argument form so the high DWORD is checked
+  //  (single-argument form silently truncates files >= 4 GiB).
+  //  INVALID_FILE_SIZE (0xFFFFFFFF) is also a legitimate size for a 4 GiB-1
+  //  byte file; distinguish via GetLastError().
+  dwFileSizeHigh = 0;
+  dwFileSize = GetFileSize(lpContext->hFileHandle, &dwFileSizeHigh);
+  if (dwFileSize == INVALID_FILE_SIZE && GetLastError() != NO_ERROR) goto DONE;
+  if (dwFileSizeHigh != 0) goto DONE;  // userfile > 4 GiB is impossible; reject
+
   //  Allocate read buffer
   if (! (pBuffer = (PCHAR)Allocate(NULL, dwFileSize + 1))) goto DONE;
-  //  Read userfile to buffer
-  if (! ReadFile(lpContext->hFileHandle, pBuffer, dwFileSize, &dwBytesRead, NULL)) goto DONE;
+
+  //  Read userfile to buffer — loop to handle partial ReadFile returns
+  //  (valid on SMB/network paths and with slow storage).
+  dwBytesRead = 0;
+  while (dwBytesRead < dwFileSize)
+  {
+    if (! ReadFile(lpContext->hFileHandle,
+                   pBuffer + dwBytesRead,
+                   dwFileSize - dwBytesRead,
+                   &dwChunk, NULL) || dwChunk == 0) goto DONE;
+    dwBytesRead += dwChunk;
+  }
   if (dwBytesRead < 5 && !bCreate) goto DONE;
   //  Pad buffer with newline
   pBuffer[dwBytesRead++]  = '\n';
@@ -400,7 +429,13 @@ static BOOL User_StandardWrite(LPUSERFILE lpUserFile)
   UserFile2Ascii(&WriteBuffer, lpUserFile);
 
   //  Write buffer to file
-  SetFilePointer(lpContext->hFileHandle, 0, 0, FILE_BEGIN);
+  if (SetFilePointer(lpContext->hFileHandle, 0, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER
+      && GetLastError() != NO_ERROR)
+  {
+    dwError  = GetLastError();
+    Free(WriteBuffer.buf);
+    ERROR_RETURN(dwError, TRUE);
+  }
   if (! WriteFile(lpContext->hFileHandle,
     WriteBuffer.buf, WriteBuffer.len, &dwBytesWritten, NULL))
   {
@@ -527,7 +562,7 @@ User_Default_Write(LPUSERFILE lpUserFile)
 	for (;dwDataRow--;)
 	{
 		lpDataRow  = &UserDataRow[dwDataRow];
-		pField    = (LPVOID)((ULONG)lpUserFile + lpDataRow->dwOffset);
+		pField    = (LPVOID)((ULONG_PTR)lpUserFile + lpDataRow->dwOffset);
 		bPrint = FALSE;
 
 		switch (lpDataRow->dwType)
@@ -637,7 +672,13 @@ User_Default_Write(LPUSERFILE lpUserFile)
 	}
 
 	//  Write buffer to file
-	SetFilePointer(lpContext->hFileHandle, 0, 0, FILE_BEGIN);
+	if (SetFilePointer(lpContext->hFileHandle, 0, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER
+	    && GetLastError() != NO_ERROR)
+	{
+		dwError  = GetLastError();
+		Free(WriteBuffer.buf);
+		ERROR_RETURN(dwError, TRUE);
+	}
 	if (! WriteFile(lpContext->hFileHandle,
 		WriteBuffer.buf, WriteBuffer.len, &dwBytesWritten, NULL))
 	{

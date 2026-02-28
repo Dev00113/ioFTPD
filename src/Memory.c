@@ -47,7 +47,7 @@ DWORD GetBucket(DWORD Size)
 __inline
 LPVOID _FragmentAllocate(register DWORD Bucket)
 {
-	register ULONG	Memory;
+	register ULONG_PTR	Memory;
 
 	//	Allocate memory
 	if (Bucket >= MEMORY_BUCKETS)
@@ -55,7 +55,7 @@ LPVOID _FragmentAllocate(register DWORD Bucket)
 		//	Allocate Block
 Bucket_Allocation:
 #ifdef _DEBUG_MEM
-		if ((Memory = (ULONG)HeapAlloc(ioHeap, 0, (Bucket >= MEMORY_BUCKETS ? Bucket : BucketSize[Bucket]) + 2 * sizeof(DWORD) + sizeof(LPVOID))))
+		if ((Memory = (ULONG_PTR)HeapAlloc(ioHeap, 0, (Bucket >= MEMORY_BUCKETS ? Bucket : BucketSize[Bucket]) + 2 * sizeof(DWORD) + sizeof(LPVOID))))
 		{
 			//	Successfully allocated
 			((LPDWORD)Memory)[0]	= 0xFFFFFFFF;
@@ -65,7 +65,7 @@ Bucket_Allocation:
 			Memory	+= sizeof(LPVOID) + sizeof(DWORD);
 		}
 #else
-		if ((Memory = (ULONG)HeapAlloc(ioHeap, 0, (Bucket >= MEMORY_BUCKETS ? Bucket : BucketSize[Bucket]) + sizeof(LPVOID))))
+		if ((Memory = (ULONG_PTR)HeapAlloc(ioHeap, 0, (Bucket >= MEMORY_BUCKETS ? Bucket : BucketSize[Bucket]) + sizeof(LPVOID))))
 		{
 			//	Successfully allocated
 			((LPDWORD)Memory)[0]	= Bucket;
@@ -95,7 +95,7 @@ Bucket_Allocation:
 	{
 		//	Get memory from bucket
 Bucket_Reuse:
-		Memory	= (ULONG)MemoryBucket[Bucket];
+		Memory	= (ULONG_PTR)MemoryBucket[Bucket];
 #ifdef _DEBUG_MEM
 		//	Push bucket by one
 		MemoryBucket[Bucket]	= ((LPVOID *)(Memory + sizeof(DWORD)))[0];
@@ -132,7 +132,7 @@ VOID _FragmentFree(register LPVOID Memory, register DWORD Bucket)
 	TCHAR	MemoryOffset[128];
 
 	if (((LPDWORD)Memory)[0] != 0xFFFFFFFF ||
-		((LPDWORD)((ULONG)Memory + sizeof(LPVOID) + sizeof(DWORD) + (Bucket >= MEMORY_BUCKETS ? Bucket : BucketSize[Bucket])))[0] != 0xFFFFFFFF)
+		((LPDWORD)((ULONG_PTR)Memory + sizeof(LPVOID) + sizeof(DWORD) + (Bucket >= MEMORY_BUCKETS ? Bucket : BucketSize[Bucket])))[0] != 0xFFFFFFFF)
 	{	
 		wsprintf(MemoryOffset, "0x%X", Memory);
 		MessageBox(NULL, MemoryOffset, "Corrupted memory block", 0);
@@ -145,7 +145,7 @@ VOID _FragmentFree(register LPVOID Memory, register DWORD Bucket)
 	{
 		//	Store memory for reuse
 #ifdef _DEBUG_MEM
-		((LPVOID *)((ULONG)Memory + sizeof(DWORD)))[0]	= MemoryBucket[Bucket];
+		((LPVOID *)((ULONG_PTR)Memory + sizeof(DWORD)))[0]	= MemoryBucket[Bucket];
 		MemoryBucket[Bucket]	= Memory;
 #else
 		((LPVOID *)Memory)[0]	= MemoryBucket[Bucket];
@@ -164,7 +164,7 @@ MemoryCleanUp:
 					Last	= Memory;
 					//	Get next address
 #ifdef _DEBUG_MEM
-					Memory	= ((LPVOID *)((ULONG)Memory + sizeof(DWORD)))[0];
+					Memory	= ((LPVOID *)((ULONG_PTR)Memory + sizeof(DWORD)))[0];
 #else
 					Memory	= ((LPVOID *)Memory)[0];
 #endif
@@ -221,12 +221,12 @@ BOOL FragmentFree(register LPVOID lpMemory)
 	if (! lpMemory) return FALSE;
 #ifdef _DEBUG_MEM
 	//	Caclulate memory offset
-	lpMemory	= (LPVOID)((ULONG)lpMemory - sizeof(LPVOID) - sizeof(DWORD));
+	lpMemory	= (LPVOID)((ULONG_PTR)lpMemory - sizeof(LPVOID) - sizeof(DWORD));
 	//	Get bucket
 	Bucket	= ((LPDWORD)lpMemory)[1];
 #else
 	//	Caclulate memory offset
-	lpMemory	= (LPVOID)((ULONG)lpMemory - sizeof(LPVOID));
+	lpMemory	= (LPVOID)((ULONG_PTR)lpMemory - sizeof(LPVOID));
 	//	Get bucket
 	Bucket	= ((LPDWORD)lpMemory)[0];
 #endif
@@ -254,10 +254,10 @@ LPVOID FragmentReAllocate(LPVOID lpMem, DWORD Size)
 
 	//	Get old bucket
 #ifdef _DEBUG_MEM
-	OldMemory	= (LPVOID)((ULONG)lpMem - sizeof(LPVOID) - sizeof(DWORD));
+	OldMemory	= (LPVOID)((ULONG_PTR)lpMem - sizeof(LPVOID) - sizeof(DWORD));
 	OldBucket	= ((LPDWORD)OldMemory)[1];
 #else
-	OldMemory	= (LPVOID)((ULONG)lpMem - sizeof(LPVOID));
+	OldMemory	= (LPVOID)((ULONG_PTR)lpMem - sizeof(LPVOID));
 	OldBucket	= ((LPDWORD)OldMemory)[0];
 #endif
 	//	Check wheter allocation is needed
@@ -370,7 +370,7 @@ LPVOID DebugAllocate(LPCSTR szDescription, DWORD dwSize)
 	//	Leave critical section
 	LeaveCriticalSection(&csMemoryDebug);
 
-	return (LPVOID)((ULONG)lpDebug + sizeof(MEMORY_DEBUGINFO));
+	return (LPVOID)((ULONG_PTR)lpDebug + sizeof(MEMORY_DEBUGINFO));
 }
 
 
@@ -380,7 +380,7 @@ BOOL DebugFree(LPVOID lpMem)
 
 	if (! lpMem) return FALSE;
 	//	Calculate offset
-	lpDebug	= (LPMEMORY_DEBUGINFO)((ULONG)lpMem - sizeof(MEMORY_DEBUGINFO));
+	lpDebug	= (LPMEMORY_DEBUGINFO)((ULONG_PTR)lpMem - sizeof(MEMORY_DEBUGINFO));
 
 	EnterCriticalSection(&csMemoryDebug);
 	//	Update previous item
@@ -412,7 +412,7 @@ LPVOID DebugReAllocate(LPVOID lpMem, LPCSTR szDescription, DWORD dwSize)
 	EnterCriticalSection(&csMemoryDebug);
 	//	Reallocate memory
 	lpDebug	= (LPMEMORY_DEBUGINFO)_ReAllocate(
-		(LPVOID)((ULONG)lpMem - sizeof(MEMORY_DEBUGINFO)), dwSize + sizeof(MEMORY_DEBUGINFO));
+		(LPVOID)((ULONG_PTR)lpMem - sizeof(MEMORY_DEBUGINFO)), dwSize + sizeof(MEMORY_DEBUGINFO));
 
 	if (lpDebug)
 	{
@@ -429,7 +429,7 @@ LPVOID DebugReAllocate(LPVOID lpMem, LPCSTR szDescription, DWORD dwSize)
 		}
 		else lpMemoryDebugTail	= lpDebug;
 
-		lpDebug	= (LPMEMORY_DEBUGINFO)((ULONG)lpDebug + sizeof(MEMORY_DEBUGINFO));
+		lpDebug	= (LPMEMORY_DEBUGINFO)((ULONG_PTR)lpDebug + sizeof(MEMORY_DEBUGINFO));
 	}
 	LeaveCriticalSection(&csMemoryDebug);
 
@@ -456,7 +456,7 @@ VOID DebugMemoryDump(VOID)
 		if (lpDebug->szDescription)
 		{
 			//	Format string
-			dwBytesToWrite	= sprintf(pBuffer, "0x%X %s\r\n", (ULONG)&lpDebug[1], lpDebug->szDescription);
+			dwBytesToWrite	= sprintf(pBuffer, "0x%IX %s\r\n", (ULONG_PTR)&lpDebug[1], lpDebug->szDescription);
 			//	Write to file
 			WriteFile(hDumpFile, pBuffer, dwBytesToWrite, &dwBytesWritten, NULL);
 		}
@@ -479,12 +479,12 @@ LPVOID _AllocateShared(register LPVOID lpMem, DWORD dwSize)
 	//	Share existing?
 	if (lpMem)
 	{
-		if ( (((PLONG)((ULONG)lpMem - sizeof(LONG)))[0] != 0xDEADBEAF) )
+		if ( (((PLONG)((ULONG_PTR)lpMem - sizeof(LONG)))[0] != 0xDEADBEAF) )
 		{
 			Putlog(LOG_ERROR, "AllocateShared: Discovered corrupted shared header.\r\n");
 			return lpMem;
 		}
-	    InterlockedIncrement((PLONG)((ULONG)lpMem - sizeof(LONG)*2));
+	    InterlockedIncrement((PLONG)((ULONG_PTR)lpMem - sizeof(LONG)*2));
 	}
 	else
 	{
@@ -501,7 +501,7 @@ LPVOID _AllocateShared(register LPVOID lpMem, DWORD dwSize)
 			((PLONG)lpMem)[0]	= 1;
 			((PLONG)lpMem)[1]	= 0xDEADBEAF;
 			//	Push lpmem by dword
-			lpMem	= (LPVOID)((ULONG)lpMem + sizeof(LONG)*2);
+			lpMem	= (LPVOID)((ULONG_PTR)lpMem + sizeof(LONG)*2);
 		}
 	}
 	return lpMem;
@@ -517,7 +517,7 @@ BOOL FreeShared(LPVOID lpMem)
 
 	if (! lpMem) return FALSE;
 
-	lpOffset	= (LPLONG)((ULONG)lpMem - sizeof(LONG)*2);
+	lpOffset	= (LPLONG)((ULONG_PTR)lpMem - sizeof(LONG)*2);
 	//	Decrease share count
 	if (lpOffset[1] != 0xDEADBEAF)
 	{
@@ -610,7 +610,7 @@ VOID Memory_DeInit(VOID)
 			Last	= Memory;
 			//	Get next address
 #ifdef _DEBUG_MEM
-			Memory	= ((LPVOID *)((ULONG)Memory + sizeof(DWORD)))[0];
+			Memory	= ((LPVOID *)((ULONG_PTR)Memory + sizeof(DWORD)))[0];
 #else
 			Memory	= ((LPVOID *)Memory)[0];
 #endif

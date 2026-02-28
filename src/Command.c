@@ -983,13 +983,13 @@ BOOL
 User_CheckIp(PCONNECTION_INFO pConnection,
              LPUSERFILE lpUserFile)
 {
-  LPSTR    szIdent, szHostName, szEntry, szHost, szTemp;
-  CHAR    szIp[32];
-  CHAR    szMatchBuf[_IP_LINE_LENGTH+1];
-  INT      i;
-  BOOL    bNumeric, bBlocking, bReturn, bDynamic, bMatch;
+  LPSTR     szIdent, szHostName, szEntry, szHost, szTemp;
+  CHAR      szIp[32];
+  CHAR      szMatchBuf[_IP_LINE_LENGTH+1];
+  INT       i;
+  BOOL      bNumeric, bBlocking, bReturn, bDynamic, bMatch;
   PHOSTENT	pHostEnt;
-  DWORD     dwStart, dwStop;
+  ULONGLONG dwStart, dwStop;
   DWORD     dwAddr, dwLen;
 
 
@@ -997,7 +997,7 @@ User_CheckIp(PCONNECTION_INFO pConnection,
   bDynamic  = FALSE;
   bMatch    = FALSE;
   bBlocking = FALSE;
-  dwStart = GetTickCount();
+  dwStart = SafeGetTickCount64();
 
   //  Get ident
   szIdent  = (pConnection->szIdent ? pConnection->szIdent : "*");
@@ -1104,12 +1104,12 @@ User_CheckIp(PCONNECTION_INFO pConnection,
 	  {
 		  SetBlockingThreadFlag();
 	  }
-	  dwStop = GetTickCount();
+	  dwStop = SafeGetTickCount64();
 
 	  if (dwStop > dwStart)
 	  {
 		  dwStop -= dwStart;
-		  dwStart = (DWORD) ((double) rand() / (RAND_MAX + 1) * dwRandomLoginDelay);
+		  dwStart = (rand() / (RAND_MAX + 1) * dwRandomLoginDelay);
 		  if (dwStop < dwStart)
 		  {
 			  // wakeup if we have an event, else sleep for a bit
@@ -1152,10 +1152,10 @@ User_CheckPassword(LPSTR szPassword,
 
 BOOL LogLoginErrorP(LPHOSTINFO lpHostInfo, DWORD dwType)
 {
-	DWORD dwTickCount;
+	ULONGLONG dwTickCount;
 
 	if (!lpHostInfo) return TRUE;
-	dwTickCount = GetTickCount();
+	dwTickCount = SafeGetTickCount64();
 
 	if (lpHostInfo->dwLastFailedLoginType != dwType)
 	{
@@ -1165,7 +1165,7 @@ BOOL LogLoginErrorP(LPHOSTINFO lpHostInfo, DWORD dwType)
 	}
 	lpHostInfo->dwLastFailedLoginType = dwType;
 
-	if (Time_DifferenceDW32(lpHostInfo->dwLastFailedLoginLogTime, dwTickCount) >= lpHostInfo->dwLastFailedLoginLogDelay * 60 * 1000)
+	if (Time_DifferenceDW64(lpHostInfo->dwLastFailedLoginLogTime, dwTickCount) >= lpHostInfo->dwLastFailedLoginLogDelay * 60 * 1000)
 	{
 		if (lpHostInfo->dwLastFailedLoginLogDelay < dwMaxLogSuppression)
 		{

@@ -2012,6 +2012,113 @@ BOOL FTP_MLSD(LPFTPUSER lpUser, IO_STRING *Args)
 }
 
 
+BOOL FTP_MLST(LPFTPUSER lpUser, IO_STRING *Args)
+{
+	VIRTUALPATH     Path;
+	LPFILEINFO      lpFileInfo;
+	LPTSTR          tszFileName, tszPath;
+	LPTSTR          tszUserName, tszGroupName, tszType, tszLink;
+	SYSTEMTIME      SystemTime;
+	MOUNT_DATA      MountData;
+	DWORD           dwError;
+	UINT64          u64FileSize;
+	BOOL            bIsDir, bCwd;
+
+	//	Optional path argument; default to current directory
+	if (GetStringItems(Args) > 0)
+	{
+		tszFileName = GetStringRange(Args, STR_BEGIN, STR_END);
+		bCwd = (tszFileName[0] == _T('.') && !tszFileName[1]);
+	}
+	else
+	{
+		tszFileName = _T(".");
+		bCwd = TRUE;
+	}
+
+	//	Copy and resolve virtual path (same pattern as FTP_Size)
+	PWD_Reset(&Path);
+	PWD_Copy(&lpUser->CommandChannel.Path, &Path, FALSE);
+
+	dwError = NO_ERROR;
+	if (!(tszPath = PWD_CWD2(lpUser->UserFile, &Path, tszFileName,
+	                          lpUser->hMountFile, &MountData,
+	                          EXISTS|VIRTUAL_PWD, lpUser, _T("MLST"), Args)))
+	{
+		dwError = GetLastError();
+		FormatString(&lpUser->CommandChannel.Out,
+		    _TEXT("550 %5T%s%0T: %2T%E.%0T\r\n"), tszFileName, dwError);
+		return TRUE;
+	}
+
+	if (!GetFileInfo(tszPath, &lpFileInfo))
+	{
+		dwError = GetLastError();
+		PWD_Free(&Path);
+		FormatString(&lpUser->CommandChannel.Out,
+		    _TEXT("550 %5T%s%0T: %2T%E.%0T\r\n"), tszFileName, dwError);
+		return TRUE;
+	}
+
+	bIsDir = !!(lpFileInfo->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+
+	//	Determine type fact — mirrors List_PrintMLSD logic exactly
+	tszLink = NULL;
+	if (bIsDir)
+	{
+		if (bCwd)
+		{
+			tszType = _T("type=cdir");
+		}
+		else if ((lpFileInfo->dwFileMode & S_SYMBOLIC) &&
+		         (tszLink = (LPTSTR)FindFileContext(SYMBOLICLINK, &lpFileInfo->Context)))
+		{
+			tszType = _T("type=OS.Unix-slink:");
+		}
+		else
+		{
+			tszType = _T("type=dir");
+		}
+	}
+	else
+	{
+		tszType = _T("type=file");
+	}
+
+	tszUserName  = Uid2User(lpFileInfo->Uid);
+	tszGroupName = Gid2Group(lpFileInfo->Gid);
+	if (!tszUserName  || !tszUserName[0])  tszUserName  = _T("nobody");
+	if (!tszGroupName || !tszGroupName[0]) tszGroupName = _T("nogroup");
+
+	u64FileSize = lpFileInfo->FileSize;
+
+	if (!FileTimeToSystemTime(&lpFileInfo->ftModificationTime, &SystemTime))
+	{
+		SystemTime.wYear = 2000; SystemTime.wMonth = 1; SystemTime.wDay = 1;
+		SystemTime.wHour = 0; SystemTime.wMinute = 0; SystemTime.wSecond = 0;
+		SystemTime.wMilliseconds = 0;
+	}
+
+	//	RFC 3659 §7.3.1 — 250 multi-line: header / SP entry / trailing line
+	FormatString(&lpUser->CommandChannel.Out,
+	    _TEXT("250-%s\r\n"), Path.pwd);
+	FormatString(&lpUser->CommandChannel.Out,
+	    _TEXT(" %s%s;size=%I64u;modify=%04d%02d%02d%02d%02d%02d;UNIX.mode=0%o;UNIX.owner=%s;UNIX.group=%s; %s\r\n"),
+	    tszType, (tszLink ? tszLink : _T("")),
+	    u64FileSize,
+	    SystemTime.wYear, SystemTime.wMonth, SystemTime.wDay,
+	    SystemTime.wHour, SystemTime.wMinute, SystemTime.wSecond,
+	    (lpFileInfo->dwFileMode & S_ACCESS), tszUserName, tszGroupName,
+	    Path.pwd);
+	FormatString(&lpUser->CommandChannel.Out, _TEXT("250 End\r\n"));
+
+	CloseFileInfo(lpFileInfo);
+	PWD_Free(&Path);
+	return FALSE;
+}
+
+
+
 BOOL FTP_List(LPFTPUSER lpUser, IO_STRING *Args)
 {
 	LPLISTING	lpListing;

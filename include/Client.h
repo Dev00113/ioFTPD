@@ -33,7 +33,7 @@ typedef struct _CLIENTSLOT
 typedef struct _CLIENT
 {
 	ONLINEDATA		Static;
-	DWORD           dwTransferLastUpdated; // didn't want to change exported ONLINEDATA field
+	ULONGLONG       dwTransferLastUpdated; // didn't want to change exported ONLINEDATA field
 	LPIOSERVICE		lpService;
 	DWORD			dwLoginTime;
 
