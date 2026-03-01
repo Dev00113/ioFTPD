@@ -6,7 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [v7.9.0] — since `7d6dcbb` *(2025-09-18 → 2026-02-22)*
+## [7.9.1] — Unreleased
+
+### Added
+
+- **`Certificate_Type`** per-service ini config key — selects the key algorithm
+  used when auto-generating a certificate at startup (`Create_Certificate = True`)
+  or when `SITE MAKECERT` is issued.  Accepted values: `RSA` (default, maximum
+  client compatibility) and `ECDSA` (smaller keys, faster handshakes, recommended
+  for new deployments).  Unrecognised values fall back to RSA.  Both code paths
+  (`Secure_MakeCert` and `Admin_MakeCert`) log the selected type, emit a
+  `LOG_ERROR` on invalid values, and note when the default is applied.
+  `Admin_MakeCert` also writes the selection to the user's FTP response buffer.
+
+---
+
+## [7.9.0] — 2026-02-28
 
 ### Added
 
@@ -91,6 +106,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`7841e6d`)
 - **MessageWindow message handling** — incorrect window message calls corrected in
   `Socket.c`. (`083b848`, `114c223`)
+- **Garbled OpenSSL log output** — in a Unicode build `Putlog` format strings are
+  wide (`wchar_t*`), where `%s` expects a wide string argument.  Four messages
+  in `Secure_Create_Ctx` passed narrow `char*` variables directly (DH param file
+  path, DH-key application failure cert name, `OpenSSL_Groups` invalid-value
+  message, `OpenSSL_Groups` default-fallback message), causing the raw bytes to be
+  walked as UTF-16LE code points and printed as mojibake.  Changed to `%hs`, which
+  forces narrow-string interpretation regardless of format string width.
+- **OpenSSL legacy provider not loading on production servers** — `libcrypto-3.dll`
+  embeds the build-time `--prefix` path as `MODULESDIR`.  On a server where that
+  path does not exist, `OSSL_PROVIDER_load("legacy")` silently fails no matter
+  where `legacy.dll` is placed.  `Security_Init` now calls
+  `OSSL_PROVIDER_set_default_search_path(NULL, "<exedir>\lib\ossl-modules")`
+  before loading any provider, directing OpenSSL to the runtime-correct location.
 
 ### Removed
 

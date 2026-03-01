@@ -201,7 +201,7 @@ VOID Security_Release(LPSECURITY lpSecure);
 BOOL Secure_Create_Ctx(LPTSTR tszService, LPSTR szCertificateName, const SSL_METHOD *Method, SSL_CTX **ppCtx);
 VOID Secure_Free_Ctx(SSL_CTX *pCtx);
 BOOL Secure_Delete_Cert(LPTSTR tszCertificateName);
-BOOL Secure_MakeCert(LPSTR szCertName);
+BOOL Secure_MakeCert(LPSTR szCertName, LPTSTR tszService);
 //	Hostname handling
 BOOL BindSocket(SOCKET Socket, ULONG lAddress, USHORT sPort, BOOL bReuse);
 BOOL BindSocketToDevice(LPIOSERVICE lpService, LPIOSOCKET lpSocket, PULONG pNetworkAddress, PUSHORT pPort, DWORD dwFlags);

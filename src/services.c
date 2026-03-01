@@ -1525,7 +1525,7 @@ BOOL Service_CreateMissingCerts(LPVOID lpIgnored)
                 Putlog(LOG_GENERAL, _T("SSL: \"Attempting to auto-generate certificate, this may take a bit\" \"name=%s\" \"Service=%s\"\r\n"),
                     szCert, lpService->tszName);
 
-                if (Secure_MakeCert(szCert))
+                if (Secure_MakeCert(szCert, lpService->tszName))
                 {
                     bCreated = TRUE;
                     Putlog(LOG_GENERAL, _T("SSL: \"Created new certificate\" \"name=%s\" \"Service=%s\"\r\n"),

@@ -457,12 +457,16 @@ error:
 }
 
 
-// TRUE if successful
-BOOL Secure_MakeCert(LPSTR szCertName)
+// Auto-generate a certificate for the given service at startup.
+// Key type is controlled by Certificate_Type in the service's INI section
+// (RSA by default; ECDSA if explicitly configured).  Returns TRUE on success.
+BOOL Secure_MakeCert(LPSTR szCertName, LPTSTR tszService)
 {
 	OPENSSLPROGRESS OpenSslProgress;
 	BUFFER          Buffer;
 	BOOL            bReturn;
+	LPTSTR          tszCertType;
+	BOOL            bECDSA = FALSE;
 
 	ZeroMemory(&Buffer, sizeof(Buffer));
 
@@ -473,7 +477,32 @@ BOOL Secure_MakeCert(LPSTR szCertName)
 	OpenSslProgress.bShowDots = FALSE;
 	OpenSslProgress.OutputFunc = MyOpenSSL_PutLog;
 
-	bReturn = MakeCert(szCertName, &OpenSslProgress);
+	// Certificate_Type = RSA (default) | ECDSA
+	if (tszService)
+	{
+		tszCertType = Config_Get(&IniConfigFile, tszService, _T("Certificate_Type"), NULL, NULL);
+		if (!tszCertType)
+		{
+			Putlog(LOG_GENERAL, _T("SSL: Certificate_Type not set for service '%s', defaulting to RSA.\r\n"), tszService);
+		}
+		else if (!_tcsicmp(tszCertType, _T("ECDSA")))
+		{
+			bECDSA = TRUE;
+			Putlog(LOG_GENERAL, _T("SSL: Generating ECDSA certificate '%hs' for service '%s'.\r\n"), szCertName, tszService);
+		}
+		else if (!_tcsicmp(tszCertType, _T("RSA")))
+		{
+			Putlog(LOG_GENERAL, _T("SSL: Generating RSA certificate '%hs' for service '%s'.\r\n"), szCertName, tszService);
+		}
+		else
+		{
+			Putlog(LOG_ERROR, _T("SSL: Certificate_Type value '%s' is invalid for service '%s', defaulting to RSA.\r\n"), tszCertType, tszService);
+		}
+		if (tszCertType) Free(tszCertType);
+	}
+
+	bReturn = bECDSA ? MakeCertECDSA(szCertName, &OpenSslProgress)
+	                 : MakeCert(szCertName, &OpenSslProgress);
 
 	if (Buffer.buf)
 	{
@@ -548,12 +577,42 @@ LPTSTR Admin_MakeCert(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRING A
 	OpenSslProgress.bShowDots = TRUE;
 	OpenSslProgress.OutputFunc = MyOpenSSL_Format;
 
-	if (!MakeCert(tszCert, &OpenSslProgress))
+	// Certificate_Type = RSA (default) | ECDSA
 	{
-		dwError = ERROR_COMMAND_FAILED;
-		Putlog(LOG_ERROR, _TEXT("Failed to generate new SSL cert \"%s\". User=%s\r\n"),
-			tszCert, tszUserName);
-		ERROR_RETURN(dwError, tszCommand);
+		LPTSTR tszCertType = Config_Get(&IniConfigFile, lpService->tszName, _T("Certificate_Type"), NULL, NULL);
+		BOOL   bECDSA      = FALSE;
+
+		if (!tszCertType)
+		{
+			FormatString(lpBuffer, _TEXT("%sCertificate_Type not set, defaulting to RSA.\r\n"), tszMultilinePrefix);
+			Putlog(LOG_GENERAL, _T("SSL: Certificate_Type not set for service '%s', defaulting to RSA.\r\n"), lpService->tszName);
+		}
+		else if (!_tcsicmp(tszCertType, _T("ECDSA")))
+		{
+			bECDSA = TRUE;
+			FormatString(lpBuffer, _TEXT("%sGenerating ECDSA certificate.\r\n"), tszMultilinePrefix);
+			Putlog(LOG_GENERAL, _T("SSL: Generating ECDSA certificate '%s' for service '%s'.\r\n"), tszCert, lpService->tszName);
+		}
+		else if (!_tcsicmp(tszCertType, _T("RSA")))
+		{
+			FormatString(lpBuffer, _TEXT("%sGenerating RSA certificate.\r\n"), tszMultilinePrefix);
+			Putlog(LOG_GENERAL, _T("SSL: Generating RSA certificate '%s' for service '%s'.\r\n"), tszCert, lpService->tszName);
+		}
+		else
+		{
+			FormatString(lpBuffer, _TEXT("%sCertificate_Type value '%s' is invalid, defaulting to RSA.\r\n"), tszMultilinePrefix, tszCertType);
+			Putlog(LOG_ERROR, _T("SSL: Certificate_Type value '%s' is invalid for service '%s', defaulting to RSA.\r\n"), tszCertType, lpService->tszName);
+		}
+		if (tszCertType) Free(tszCertType);
+
+		if (!(bECDSA ? MakeCertECDSA(tszCert, &OpenSslProgress)
+		             : MakeCert(tszCert, &OpenSslProgress)))
+		{
+			dwError = ERROR_COMMAND_FAILED;
+			Putlog(LOG_ERROR, _TEXT("Failed to generate new SSL cert \"%s\". User=%s\r\n"),
+				tszCert, tszUserName);
+			ERROR_RETURN(dwError, tszCommand);
+		}
 	}
 
 	Putlog(LOG_GENERAL, _TEXT("SSL: \"Successfully generated new cert: %s\" \"User=%s\".\r\n"),
