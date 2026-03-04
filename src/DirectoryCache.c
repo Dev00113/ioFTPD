@@ -527,9 +527,6 @@ static BOOL UpdateDirectory(LPDIRECTORY lpDirectory, BOOL bRecursive, BOOL bFake
   CopyMemory(tszFileName, lpDirectory->tszFileName, lpDirectory->dwFileName * sizeof(TCHAR));
   CopyMemory(&tszFileName[lpDirectory->dwFileName], _TEXT("\\*"), 3 * sizeof(TCHAR));
 
-  Putlog(LOG_DEBUG,
-         "UpdateDirectory: path='%s' len=%u recursive=%d\r\n",
-         lpDirectory->tszFileName, lpDirectory->dwFileName, (int)bRecursive);
 
   hFind = IoWin32FindFirstFile(tszFileName, &FindData);
   if (hFind != INVALID_HANDLE_VALUE)
@@ -826,9 +823,6 @@ static BOOL UpdateDirectory(LPDIRECTORY lpDirectory, BOOL bRecursive, BOOL bFake
   lpDirectoryInfo->lpRootEntry->dwSubDirectories  = dwSubDirectories;
   lpDirectoryInfo->lpFileInfo  = lpFileInfoArray;
 
-  Putlog(LOG_DEBUG,
-         "UpdateDirectory: complete path='%s' items=%u err=%u\r\n",
-         lpDirectory->tszFileName, dwItems, dwError);
 
   if (dwError == NO_ERROR)
   {
