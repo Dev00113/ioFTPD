@@ -403,8 +403,3 @@ The following changes are recommended in rough priority order:
 14. **Remove commented-out dead code** – `Unused-code.txt`, commented `BindSocketToDevice`, `UnbindSocket`, deadlock detection.
 15. **Replace `wsprintf` with safe alternatives** – Use `StringCbPrintf` or `snprintf_s`.
 
-### Long Term (Architecture)
-
-16. **Add automated tests** – No tests exist. Start with unit tests for `Memory.c`, `Compare.c`, `ConfigReader.c`, `RowParser.c`, and `Buffer.c`.
-17. **Cross-platform consideration** – The IOCP and Win32 dependency is pervasive, but abstracting the platform layer would enable porting to Linux (io_uring) or BSD (kqueue).
-18. **Replace custom memory allocator** – The bucket allocator is 32-bit only and unmaintainable. Modern MSVC CRT or `mimalloc` are safer alternatives.
