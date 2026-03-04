@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright(c) 2006 iniCom Networks, Inc.
  *
  * This file is part of ioFTPD.
@@ -670,7 +670,7 @@ LPSTR PWD_Resolve(LPSTR szVirtualPath, MOUNTFILE hMountFile, LPMOUNT_DATA Data, 
 		else CopyMemory(Last, BestMatch->lpSubMount[i].szFileName, Length + 1);
 
 		//	Return last offset
-		if (! Exists || GetFileAttributes(Last) != INVALID_FILE_SIZE)
+		if (! Exists || IoGetFileAttributes(Last) != INVALID_FILE_SIZE)
 		{
 			if (Data) Data->dwLastPath	= Length + lLength;
 			return Last;
@@ -888,6 +888,7 @@ LPTSTR PWD_CWD2(LPUSERFILE lpUserFile, PVIRTUALPATH Pwd, LPTSTR tszChangeTo, MOU
 	dwBestDepth     = 0;
 	dwDepth			= 0;
 	bStringEnd		= (tszChangeTo[0] == _TEXT('\0') ? TRUE : FALSE);
+	bFileExists		= FALSE;
 	dwFollowingLinks = 0;
 
 	for (;dwError == NO_ERROR && ! bStringEnd;tszChangeTo = tpSlash)
@@ -960,6 +961,7 @@ LPTSTR PWD_CWD2(LPUSERFILE lpUserFile, PVIRTUALPATH Pwd, LPTSTR tszChangeTo, MOU
 						if (tszBestParent) FreeShared(tszBestParent);
 						tszBestParent = AllocateShared(tszCurrentPath, NULL, 0);
 						dwBestDepth = dwDepth;
+						bFileExists = TRUE;  // PWD_Resolve(bExact=TRUE) verified directory exists on disk
 						continue;
 					}
 					if (lpMountData->Initialized && lpMountData->lpVirtualDirEvent != NULL)
@@ -1379,7 +1381,7 @@ LPTSTR PWD_CWD2(LPUSERFILE lpUserFile, PVIRTUALPATH Pwd, LPTSTR tszChangeTo, MOU
 			// ok, need to fix up the virtual dir path here
 			CopyMemory(Pwd->Symbolic, VirtualPath.Symbolic, (VirtualPath.Symlen+1)*sizeof(TCHAR));
 			Pwd->Symlen = VirtualPath.Symlen;
-			dwLink = GetFileAttributes(tszPath);
+			dwLink = IoGetFileAttributes(tszPath);
 			if ((dwLink != INVALID_FILE_ATTRIBUTES) && (dwLink & FILE_ATTRIBUTE_DIRECTORY) && Pwd->Symlen)
 			{
 				// we have a directory, make sure symbolic path ends in a '/'.
@@ -1866,7 +1868,7 @@ MOUNTFILE MountFile_Parse(LPVOID lpBuffer, DWORD dwBuffer, LPSTR szVfsFileName)
 	LPSTR				szFileName;
 	PCHAR				pEnd, pNewline, pQuote, pSlash, pVirtual, pLine, pLineEnd, pNewSlash;
 	DWORD				dwError, dwLine, dwItem, dwFileName, i, dwLineNum, dwSize, dwVfsNameLen;
-	CHAR                szDirName[MAX_PATH+1];
+	CHAR                szDirName[_MAX_LONG_PATH+1];
 	WCHAR               wszErrBuf[256], *wszErr;
 
 	pEnd	= &((PCHAR)lpBuffer)[dwBuffer];
@@ -1960,7 +1962,7 @@ MOUNTFILE MountFile_Parse(LPVOID lpBuffer, DWORD dwBuffer, LPSTR szVfsFileName)
 			continue;
 		}
 
-		if (pQuote - pLine > MAX_PATH)
+		if (pQuote - pLine > _MAX_LONG_PATH)
 		{
 			Putlog(LOG_ERROR, _T("VFS ERROR: file '%s', line #%u has a real path that is too long.\r\n"),
 				szVfsFileName, dwLineNum);
@@ -1978,7 +1980,7 @@ MOUNTFILE MountFile_Parse(LPVOID lpBuffer, DWORD dwBuffer, LPSTR szVfsFileName)
 		pVirtual = pSlash;
 
 		strncpy_s(szDirName, sizeof(szDirName), &pLine[1], pQuote - pLine - 1);
-		if (GetFileAttributes(szDirName) == INVALID_FILE_ATTRIBUTES)
+		if (IoGetFileAttributes(szDirName) == INVALID_FILE_ATTRIBUTES)
 		{
 			dwSize = sizeof(wszErrBuf)/sizeof(wszErrBuf[0]);
 			wszErr = FormatError(GetLastError(), wszErrBuf, &dwSize);
@@ -1998,7 +2000,7 @@ MOUNTFILE MountFile_Parse(LPVOID lpBuffer, DWORD dwBuffer, LPSTR szVfsFileName)
 		{
 			dwItem	= pNewSlash - pSlash;
 			//	Check item length
-			if (dwItem > MAX_PATH)
+			if (dwItem > _MAX_LONG_PATH)
 			{
 				dwError	= ERROR_INVALID_MOUNT_ENTRY;
 				break;
@@ -2641,7 +2643,7 @@ PreLoad_MountFile(MOUNTFILE hMountFile, BOOL bLogCount)
 		ZeroMemory(&MountData, sizeof(MountData));
 		if (iLen && (tszRealPath = PWD_Resolve(lpPreLoad2->pBuffer, hMountFile, &MountData, TRUE, 0)))
 		{
-			dwAttr = GetFileAttributes(tszRealPath);
+			dwAttr = IoGetFileAttributes(tszRealPath);
 			FreeShared(tszRealPath);
 			tszRealPath = NULL;
 			if ( (dwAttr != INVALID_FILE_ATTRIBUTES) && (dwAttr & FILE_ATTRIBUTE_DIRECTORY) )

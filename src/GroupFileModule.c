@@ -37,7 +37,7 @@ static DATAROW GroupDataRow[] =
 	"description", offsetof(GROUPFILE, szDescription), DT_STRING, 1, 128,
 	"users", offsetof(GROUPFILE, Users), DT_INT32, 1, 0,
 	"slots", offsetof(GROUPFILE, Slots), DT_INT32, 2, 0,
-	"vfsfile", offsetof(GROUPFILE, szVfsFile), DT_STRING, 1, _MAX_PATH
+	"vfsfile", offsetof(GROUPFILE, szVfsFile), DT_STRING, 1, _MAX_LONG_PATH
 };
 
 

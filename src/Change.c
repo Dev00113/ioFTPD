@@ -994,8 +994,8 @@ static BOOL Change_User_VfsFile(CHANGE_VARIABLES *Vars)
 	}
 
 	//	Validate filename
-	if (_tcslen(tszFileName) <= MAX_PATH &&
-		(dwAttributes = GetFileAttributes(tszFileName)) != INVALID_FILE_SIZE &&
+	if (_tcslen(tszFileName) <= _MAX_LONG_PATH &&
+		(dwAttributes = IoGetFileAttributes(tszFileName)) != INVALID_FILE_SIZE &&
 		! (dwAttributes & FILE_ATTRIBUTE_DIRECTORY))
 	{
 		//	Log event, if it was executed by administrator
@@ -1139,16 +1139,16 @@ static BOOL Change_User_HomeDir(CHANGE_VARIABLES *Vars)
 	{
 		Putlog(LOG_SYSOP, _TEXT("'%s' changed homedir for user '%s' from '%s' to '%.*s'.\r\n"),
 			Uid2User(Vars->lpAdmin->Uid), Uid2User(Vars->lpTarget->Uid),
-			Vars->lpTarget->Home, _MAX_PATH, tszHomeDirectory);
+			Vars->lpTarget->Home, _MAX_LONG_PATH, tszHomeDirectory);
 		if (Vars->lpBuffer)
 		{
 			FormatString(Vars->lpBuffer, _TEXT("%sChanged homedir for user '%s' from '%s' to '%.*s'.\r\n"),
 				Vars->tszMultilinePrefix, Uid2User(Vars->lpTarget->Uid),
-				Vars->lpTarget->Home, _MAX_PATH, tszHomeDirectory);
+				Vars->lpTarget->Home, _MAX_LONG_PATH, tszHomeDirectory);
 		}
 	}
 	//	Update homedir
-	_stprintf(Vars->lpTarget->Home, _TEXT("%.*s"), _MAX_PATH, tszHomeDirectory);
+	_stprintf(Vars->lpTarget->Home, _TEXT("%.*s"), _MAX_LONG_PATH, tszHomeDirectory);
 
 	return TRUE;
 }
@@ -1346,8 +1346,8 @@ static BOOL Change_Group_VfsFile(CHANGE_VARIABLES *Vars)
 		return TRUE;
 	}
 
-	if (_tcslen(tszFileName) <= MAX_PATH &&
-		(dwAttributes = GetFileAttributes(tszFileName)) != INVALID_FILE_SIZE &&
+	if (_tcslen(tszFileName) <= _MAX_LONG_PATH &&
+		(dwAttributes = IoGetFileAttributes(tszFileName)) != INVALID_FILE_SIZE &&
 		! (dwAttributes & FILE_ATTRIBUTE_DIRECTORY))
 	{
 		//	Log event, if it was executed by administrator

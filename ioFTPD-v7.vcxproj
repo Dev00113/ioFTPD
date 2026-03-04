@@ -120,6 +120,9 @@
       <DataExecutionPrevention />
       <TargetMachine>MachineX86</TargetMachine>
     </Link>
+    <ManifestTool>
+      <AdditionalManifestFiles>ioFTPD.additional.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles>
+    </ManifestTool>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Purify|Win32'">
     <ClCompile>
@@ -180,6 +183,7 @@
     <ClCompile Include="src\IoTime.c" />
     <ClCompile Include="src\Locking.c" />
     <ClCompile Include="src\LogSystem.c" />
+    <ClCompile Include="src\LongPath.c" />
     <ClCompile Include="src\Main.c" />
     <ClCompile Include="src\Memory.c" />
     <ClCompile Include="src\Message.c" />
@@ -242,6 +246,7 @@
     <ClInclude Include="include\Job.h" />
     <ClInclude Include="include\Lists.h" />
     <ClInclude Include="include\LockObject.h" />
+    <ClInclude Include="include\LongPath.h" />
     <ClInclude Include="include\Log.h" />
     <ClInclude Include="include\MessageFile.h" />
     <ClInclude Include="include\NewClient.h" />

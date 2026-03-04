@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright(c) 2006 iniCom Networks, Inc.
  *
  * This file is part of ioFTPD.
@@ -276,7 +276,7 @@ LPDIRECTORY InsertAndAcquireDirCacheLock(LPTSTR tszFileName, DWORD dwFileName, L
 	LPDIRECTORYTABLE   lpDirectoryTable;
 	INT                iResult;
 	BOOL               bDoUpdate;
-	CHAR               pBuffer[sizeof(DIRECTORY) + MAX_PATH + 1];
+	CHAR               pBuffer[sizeof(DIRECTORY) + _MAX_LONG_PATH + 1];
 
 	lpOldDirectory    = NULL;
 	lpTempDir         = (LPDIRECTORY) pBuffer;
@@ -522,12 +522,16 @@ static BOOL UpdateDirectory(LPDIRECTORY lpDirectory, BOOL bRecursive, BOOL bFake
   }
   lpDirectoryInfo->lpRootEntry  = lpFile;
 
-  //  Create search item to stack
-  tszFileName  = _alloca((lpDirectory->dwFileName + MAX_PATH + 2) * sizeof(TCHAR));
+  //  Create search item to stack � reserve room for directory path + wildcard suffix
+  tszFileName  = _alloca((lpDirectory->dwFileName + _MAX_LONG_PATH + 2) * sizeof(TCHAR));
   CopyMemory(tszFileName, lpDirectory->tszFileName, lpDirectory->dwFileName * sizeof(TCHAR));
   CopyMemory(&tszFileName[lpDirectory->dwFileName], _TEXT("\\*"), 3 * sizeof(TCHAR));
 
-  hFind  = FindFirstFile(tszFileName, &FindData);
+  Putlog(LOG_DEBUG,
+         "UpdateDirectory: path='%s' len=%u recursive=%d\r\n",
+         lpDirectory->tszFileName, lpDirectory->dwFileName, (int)bRecursive);
+
+  hFind = IoWin32FindFirstFile(tszFileName, &FindData);
   if (hFind != INVALID_HANDLE_VALUE)
   {
     DirectorySize    = 0;
@@ -622,17 +626,47 @@ static BOOL UpdateDirectory(LPDIRECTORY lpDirectory, BOOL bRecursive, BOOL bFake
 
 			  if (! lpPopulated)
 			  {
-				  if ((dwError = GetLastError()) != ERROR_FILE_NOT_FOUND &&
-					  dwError != ERROR_PATH_NOT_FOUND &&
-					  dwError != ERROR_ACCESS_DENIED &&
-					  dwError != ERROR_DIRECTORY_LOCKED) break;
+				  dwError = GetLastError();
+				  Putlog(LOG_DEBUG,
+				         "UpdateDirectory: child='%s' err=%u -- open failed, using fake entry\r\n",
+				         FindData.cFileName, dwError);
+				  if (dwError != ERROR_FILE_NOT_FOUND       &&
+					  dwError != ERROR_PATH_NOT_FOUND       &&
+					  dwError != ERROR_ACCESS_DENIED        &&
+					  dwError != ERROR_DIRECTORY_LOCKED     &&
+					  dwError != ERROR_FILENAME_EXCED_RANGE &&
+					  dwError != ERROR_INVALID_NAME) break;
 				  dwError  = NO_ERROR;
-				  continue;
+				  // Child exists (found via FindData) but cannot be fully populated.
+				  // Create a minimal fake entry so it appears in directory listings.
+				  bFakeEntry = TRUE;
+				  lpFile = (LPFILEINFO)Allocate("Directory:Info:Dir:Fake", sizeof(FILEINFO) + dwFileName);
+				  if (! lpFile) { dwError = ERROR_NOT_ENOUGH_MEMORY; break; }
+				  ZeroMemory(lpFile, sizeof(FILEINFO));
+				  lpFile->dwSafety         = 0xDEADBEAF;
+				  lpFile->lReferenceCount  = 1;
+				  lpFile->dwFileName       = dwFileName / sizeof(TCHAR);
+				  CopyMemory(lpFile->tszFileName, FindData.cFileName, dwFileName + sizeof(TCHAR));
+				  CopyMemory(&lpFile->ftModificationTime, &FindData.ftLastWriteTime, sizeof(FILETIME));
+				  ZeroMemory(&lpFile->ftAlternateTime, sizeof(FILETIME));
+				  lpFile->Context.dwData   = 0;
+				  lpFile->Context.lpData   = NULL;
+				  lpFile->FileSize         = FileSize;
+				  lpFile->dwFileAttributes = FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_FAKE;
+				  lpFile->dwSubDirectories = 0;
+				  lpFile->lpLinkedRoot     = NULL;
+				  lpFile->dwUploadTimeInMs = 0;
+				  lpFile->Uid              = DefaultUid[1];
+				  lpFile->Gid              = DefaultGid[1];
+				  lpFile->dwFileMode       = dwDefaultFileMode[1];
 			  }
-			  //  Get root entry, should always exist!
-			  lpFile  = lpPopulated->lpRootEntry;
-			  InterlockedIncrement(&lpFile->lReferenceCount);
-			  CloseDirectory(lpPopulated);
+			  else
+			  {
+				  //  Get root entry, should always exist!
+				  lpFile  = lpPopulated->lpRootEntry;
+				  InterlockedIncrement(&lpFile->lReferenceCount);
+				  CloseDirectory(lpPopulated);
+			  }
 		  }
 		  else if (!bFakeDirs)
 		  {
@@ -675,7 +709,7 @@ static BOOL UpdateDirectory(LPDIRECTORY lpDirectory, BOOL bRecursive, BOOL bFake
 			  tszTemp += dwFileName;
 			  CopyMemory(tszTemp, _T("\\.ioFTPD"), 9 * sizeof(TCHAR));
 
-			  hFile  = CreateFile(tszFileName, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE,
+			  hFile  = IoCreateFile(tszFileName, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE,
 				  NULL, OPEN_EXISTING, 0, NULL);
 			  if (hFile != INVALID_HANDLE_VALUE)
 			  {
@@ -776,7 +810,7 @@ static BOOL UpdateDirectory(LPDIRECTORY lpDirectory, BOOL bRecursive, BOOL bFake
       }
       DirectorySize  += FileSize;
 
-    } while (FindNextFile(hFind, &FindData));
+    } while (IoWin32FindNextFile(hFind, &FindData));
     FindClose(hFind);
   }
   else 
@@ -792,6 +826,10 @@ static BOOL UpdateDirectory(LPDIRECTORY lpDirectory, BOOL bRecursive, BOOL bFake
   lpDirectoryInfo->lpRootEntry->dwSubDirectories  = dwSubDirectories;
   lpDirectoryInfo->lpFileInfo  = lpFileInfoArray;
 
+  Putlog(LOG_DEBUG,
+         "UpdateDirectory: complete path='%s' items=%u err=%u\r\n",
+         lpDirectory->tszFileName, dwItems, dwError);
+
   if (dwError == NO_ERROR)
   {
 	  lpFile = lpDirectoryInfo->lpRootEntry;
@@ -799,7 +837,7 @@ static BOOL UpdateDirectory(LPDIRECTORY lpDirectory, BOOL bRecursive, BOOL bFake
 	  lpFile->dwSubDirectories  = dwSubDirectories;
 
 	  if (!CompareFileTime(&ftRootEntry[0], &ftRootEntry[2]) &&
-		  GetFileAttributesEx(lpDirectory->tszFileName, GetFileExInfoStandard, &DirData))
+		  IoGetFileAttributesEx(lpDirectory->tszFileName, GetFileExInfoStandard, &DirData))
 	  {
 		  // need to get the modification/creation times for drive letters
 		  // because Find*File won't return a '.' entry.
@@ -843,7 +881,7 @@ BOOL WriteDirectoryPermissions(LPDIRECTORY lpDirectory, LPTSTR tszName, DWORD dw
   CopyMemory(tszFileName, tszName, dwName * sizeof(TCHAR));
   CopyMemory(&tszFileName[dwName], _TEXT("\\.ioFTPD"), 9 * sizeof(TCHAR));
 
-  hFile  = CreateFile(tszFileName, GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE,
+  hFile  = IoCreateFile(tszFileName, GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE,
     NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_HIDDEN, NULL);
   if (hFile == INVALID_HANDLE_VALUE) return FALSE;
 
@@ -981,13 +1019,20 @@ BOOL ReadDirectoryPermissions(LPDIRECTORY lpDirectory)
   CopyMemory(&tszFileName[lpDirectory->dwFileName], _TEXT("\\.ioFTPD"), 9 * sizeof(TCHAR));
 
   //  Open file
-  hFile  = CreateFile(tszFileName, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE,
+  hFile  = IoCreateFile(tszFileName, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE,
     NULL, OPEN_EXISTING, 0, NULL);
   if (hFile == INVALID_HANDLE_VALUE)
   {
     n  = GetLastError();
     Free(pBuffer);
-    if (n != ERROR_FILE_NOT_FOUND) return FALSE;
+    // ERROR_FILE_NOT_FOUND: .ioFTPD absent, use default permissions.
+    // ERROR_PATH_NOT_FOUND / ERROR_FILENAME_EXCED_RANGE / ERROR_INVALID_NAME:
+    //   ANSI CreateFile cannot resolve the long path; treat as absent and
+    //   use default permissions (UpdateDirectory already confirmed the
+    //   parent directory itself is accessible via IoWin32FindFirstFile).
+    // IoCreateFile already retried with W+\\?\ on path-length errors;
+    // only FILE_NOT_FOUND (absent) and PATH_NOT_FOUND (no parent) are benign.
+    if (n != ERROR_FILE_NOT_FOUND && n != ERROR_PATH_NOT_FOUND) return FALSE;
     return TRUE;
   }
 
@@ -1267,7 +1312,7 @@ BOOL UpdateFileInfo(LPTSTR tszFileName, LPVFSUPDATE lpData)
 	TCHAR            tTemp;
 
 	//  Determinate file type and verify existence (directory/file)
-	dwFileAttributes  = GetFileAttributes(tszFileName);
+	dwFileAttributes  = IoGetFileAttributes(tszFileName);
 	if (dwFileAttributes == INVALID_FILE_ATTRIBUTES) return FALSE;
 	bDirectory  = (dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ? TRUE : FALSE);
 
@@ -1560,15 +1605,15 @@ LPDIRECTORYINFO OpenDirectory(LPTSTR tszFileName, BOOL bRecursive, BOOL bFakeDir
 	HANDLE                     hDir;
 	LPREPARSE_DATA_BUFFER      pReParseBuf;
 	char                       buf[MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
-	TCHAR                      tszTargetName[_MAX_PATH*2+1], tszRelativeName[_MAX_PATH*2+1];
-	TCHAR                      tszRootDir[MAX_PATH+1];
+	TCHAR                      tszTargetName[_MAX_LONG_PATH+1], tszRelativeName[_MAX_LONG_PATH+1];
+	TCHAR                      tszRootDir[_MAX_LONG_PATH+1];
 	FILETIME                   ftLastWriteTime;
 	WCHAR                      *wPos;
 	LONG                       lOldUpdateState;
 
 	//  Trim filename
 	dwFileName  = _tcslen(tszFileName);
-	if (dwFileName > _MAX_PATH )
+	if (dwFileName > _MAX_LONG_PATH)
 	{
 		SetLastError(ERROR_PATH_NOT_FOUND);
 		return NULL;
@@ -1608,7 +1653,7 @@ LPDIRECTORYINFO OpenDirectory(LPTSTR tszFileName, BOOL bRecursive, BOOL bFakeDir
 	}
 	else
 	{
-		bResult  = GetFileAttributesEx(lpDirectory->tszFileName, GetFileExInfoStandard, &FileAttributes);
+		bResult  = IoGetFileAttributesEx(lpDirectory->tszFileName, GetFileExInfoStandard, &FileAttributes);
 		//  Update contents of directory
 		if (!bResult)
 		{
@@ -1669,7 +1714,7 @@ LPDIRECTORYINFO OpenDirectory(LPTSTR tszFileName, BOOL bRecursive, BOOL bFakeDir
 			// make sure we don't chase ourselves in a loop resolving circular links...
 			for (dwLoop = 10 ; dwLoop ; dwLoop--) 
 			{
-				if (dwLoop && !GetFileAttributesEx(tszLinkName, GetFileExInfoStandard, &FileAttributes))
+				if (dwLoop && !IoGetFileAttributesEx(tszLinkName, GetFileExInfoStandard, &FileAttributes))
 				{
 					// we failed to get info on the target...
 					// note: we don't update on the first pass because we did that above so just use that
@@ -1724,7 +1769,7 @@ LPDIRECTORYINFO OpenDirectory(LPTSTR tszFileName, BOOL bRecursive, BOOL bFakeDir
 						break;
 					}
 					dwSize -= 4;
-					if (dwSize > _MAX_PATH)
+					if (dwSize > _MAX_LONG_PATH)
 					{
 						// we don't handle long names... just bail
 						break;
@@ -1745,7 +1790,7 @@ LPDIRECTORYINFO OpenDirectory(LPTSTR tszFileName, BOOL bRecursive, BOOL bFakeDir
 				{
 					// NOTE: on Vista+ we have symlinks so consider GetFinalPathNameByHandle if symlink resolving turns out to be hard...
 					dwSize = pReParseBuf->SymbolicLinkReparseBuffer.SubstituteNameLength/2;
-					if (dwSize > _MAX_PATH)
+					if (dwSize > _MAX_LONG_PATH)
 					{
 						// we don't handle long names... just bail
 						break;
@@ -1803,12 +1848,12 @@ LPDIRECTORYINFO OpenDirectory(LPTSTR tszFileName, BOOL bRecursive, BOOL bFakeDir
 					// if I think it's wrong and a risk.
 					// TODO: is there really a limit of MAX_PATH on the input path which can include a long path and another long
 					// relative path but the result is less than the total?
-					if (!PathCanonicalize(tszTargetName, tszRelativeName))
+					if (!IoCanonicalizePath(tszTargetName, _MAX_LONG_PATH + 1, tszRelativeName))
 					{
 						break;
 					}
 					dwSize = _tcslen(tszTargetName);
-					if (dwSize > _MAX_PATH)
+					if (dwSize > _MAX_LONG_PATH)
 					{
 						// we don't handle long names... just bail
 						break;
@@ -2044,7 +2089,7 @@ BOOL GetFileInfo2(LPTSTR tszFileName, LPFILEINFO *lpFileInfo, BOOL bNoCheck, LPD
   tszPath  = tszFileName;
   dwPath  = _tcslen(tszPath);
   //  Determinate filetype and verify existence
-  dwFileAttributes  = GetFileAttributes(tszFileName);
+  dwFileAttributes  = IoGetFileAttributes(tszFileName);
   if (dwFileAttributes == INVALID_FILE_ATTRIBUTES) return FALSE;
   if (!bNoCheck && ((dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) || (dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)))
   {
@@ -2465,7 +2510,7 @@ BOOL IoMoveFile(LPTSTR tszExistingFileName, LPTSTR tszNewFileName)
   SetBlockingThreadFlag();
 
   //  Move file on filesystem
-  if (MoveFileEx(tszExistingFileName, tszNewFileName, MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH))
+  if (IoMoveFileEx(tszExistingFileName, tszNewFileName, MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH))
   {
     dwExistingFileName  = _tcslen(tszExistingFileName);
     dwNewFileName  = _tcslen(tszNewFileName);
@@ -2526,8 +2571,8 @@ IoDeleteFile(LPTSTR tszFileName, DWORD dwFileName)
   LPTSTR  tszPath;
   DWORD  dwPath;
 
-  //  Delete file from filesystem
-  if (! DeleteFile(tszFileName)) return FALSE;
+  //  Delete file from filesystem (long-path aware — retries with W+\\?\ on path-length errors)
+  if (!IoDeleteFileEx(tszFileName)) return FALSE;
 
   //  Get parent filename
   dwPath  = _tcslen(tszFileName);
@@ -2559,16 +2604,16 @@ BOOL IoRemoveReparsePoint(LPTSTR tszPath)
 	DWORD   dwSize, dwError;
 	WCHAR  *pwPos;
 
-	hDir = CreateFile(tszPath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE, 0, OPEN_EXISTING,
-		(FILE_FLAG_OPEN_REPARSE_POINT|FILE_FLAG_BACKUP_SEMANTICS), 0);
-	if (hDir == INVALID_HANDLE_VALUE)
+	if (!IoOpenReparsePointForDelete(tszPath, &hDir))
 	{
-		return TRUE;
+		return TRUE;    // cannot open — proceed with delete (not a protected junction)
 	}
 
 	if (!DeviceIoControl(hDir, FSCTL_GET_REPARSE_POINT, NULL, 0, buf, sizeof(buf), &dwSize, NULL))
 	{
+		dwError = GetLastError();    // save before CloseHandle clobbers GetLastError
 		CloseHandle(hDir);
+		SetLastError(dwError);       // restore for caller (*pError = GetLastError())
 		return TRUE;
 	}
 
@@ -2605,6 +2650,7 @@ BOOL IoRemoveReparsePoint(LPTSTR tszPath)
 	{
 		return FALSE;
 	}
+	SetLastError(dwError);    // restore after CloseHandle so caller's GetLastError() is correct
 	return TRUE;
 }
 
@@ -2619,22 +2665,34 @@ BOOL IoRemoveDirectory2(LPTSTR tszPath, LPFILEINFO lpFileInfo)
 	// customized folders end up read-only so undo that if set...
 	// have to check the actual attributes since the read-only flag
 	// gets lost on directories
-	if ((dwAttributes = GetFileAttributes(tszPath)) != INVALID_FILE_ATTRIBUTES)
+	// Long-path prefix applied at each Win32 API boundary.
+	{
+		LPTSTR tszLong = LongPath_Prefix(tszPath);
+		dwAttributes = IoGetFileAttributes(tszLong);
+		LongPath_Free(tszPath, tszLong);
+	}
+	if (dwAttributes != INVALID_FILE_ATTRIBUTES)
 	{
 		if (dwAttributes & FILE_ATTRIBUTE_READONLY)
 		{
 			// strip off our internal flags
-			if (!SetFileAttributes(tszPath, dwAttributes & ~FILE_ATTRIBUTE_READONLY))
+			LPTSTR tszLong = LongPath_Prefix(tszPath);
+			if (!SetFileAttributes(tszLong, dwAttributes & ~FILE_ATTRIBUTE_READONLY))
 			{
 				dwError = GetLastError();
 			}
+			LongPath_Free(tszPath, tszLong);
 		}
 	}
 	else dwError = GetLastError();
 
-	if (dwError == NO_ERROR && !RemoveDirectory(tszPath))
+	if (dwError == NO_ERROR)
 	{
-		dwError = GetLastError();
+		BOOL bRem = IoRemoveDirectoryEx(tszPath);
+		if (!bRem) dwError = GetLastError();
+	}
+	if (dwError != NO_ERROR)
+	{
 		//  See if we should restore directory's fileinfo
 		if (lpFileInfo && lpFileInfo->dwFileAttributes & FILE_ATTRIBUTE_IOFTPD)
 		{
@@ -2684,8 +2742,8 @@ BOOL IoRemoveDirectory(LPTSTR tszPath)
   dwPath  = TrimFileName(tszPath, tszPathName);
   _tcscpy(&tszPathName[dwPath], _TEXT("\\*"));
 
-  //  Begin directory search
-  hFind  = FindFirstFile(tszPathName, &FindData);
+  //  Begin directory search (long-path aware)
+  hFind = IoWin32FindFirstFile(tszPathName, &FindData);
   if (hFind == INVALID_HANDLE_VALUE) return FALSE;
 
   //  Get fileinfo
@@ -2751,7 +2809,7 @@ BOOL IoRemoveDirectory(LPTSTR tszPath)
         bDelete  = TRUE;
       }
 
-  } while (bDelete && FindNextFile(hFind, &FindData));
+  } while (bDelete && IoWin32FindNextFile(hFind, &FindData));
   FindClose(hFind);
 
   if (lpListHead)
@@ -2789,7 +2847,8 @@ BOOL IoRemoveDirectory(LPTSTR tszPath)
       if (dwError == NO_ERROR)
       {
         CopyMemory(tpOffset, lpItem->tszFileName, (lpItem->dwFileName + 1) * sizeof(TCHAR));
-        bDelete = DeleteFile(tszDeleteName);
+        //  Delete via IoDeleteFileEx — handles long paths with ANSI→W \\?\ retry.
+        bDelete = IoDeleteFileEx(tszDeleteName);
         if (! bDelete)
         {
           dwError  = GetLastError();
@@ -2858,7 +2917,7 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 	WIN32_FIND_DATA    FindData, ThisDir;
 	WIN32_FILE_ATTRIBUTE_DATA  FileAttributes;
 	LPTSTR             tszName, tszSrcParent, tszDestParent;
-	TCHAR              tszSrc[MAX_PATH+1], tszDest[MAX_PATH+1];
+	TCHAR              tszSrc[_MAX_LONG_PATH+1], tszDest[_MAX_LONG_PATH+1];
 	DWORD              dwSrcLen, dwDestLen;
 	DWORD              dwError = 0;
 	BOOL               bFirst = TRUE, bResult, bLocked, bRelease;
@@ -2886,7 +2945,7 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 	// exist because we could copy smaller files but fail to copy the
 	// permissions with it...
 	// also abort if src == dest because that would cause lots of problems...
-	if (dwSrcLen < 3 || dwDestLen < 3 || dwSrcLen > MAX_PATH-9 || dwDestLen > MAX_PATH-9 ||
+	if (dwSrcLen < 3 || dwDestLen < 3 || dwSrcLen > _MAX_LONG_PATH-9 || dwDestLen > _MAX_LONG_PATH-9 ||
 		tszSrcPath[dwSrcLen-1] == _T('\\') || tszDestPath[dwDestLen-1] == _T('\\') ||
 		!_tcsicmp(tszSrcPath, tszDestPath))
 	{
@@ -2894,8 +2953,8 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 		return FALSE;
 	}
 
-	_tcscpy_s(tszSrc,  MAX_PATH, tszSrcPath);
-	_tcscpy_s(tszDest, MAX_PATH, tszDestPath);
+	_tcscpy_s(tszSrc,  _MAX_LONG_PATH+1, tszSrcPath);
+	_tcscpy_s(tszDest, _MAX_LONG_PATH+1, tszDestPath);
 
 	tszSrcParent  = _tcsrchr(tszSrc,  _T('\\'));
 	tszDestParent = _tcsrchr(tszDest, _T('\\'));
@@ -2906,7 +2965,7 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 		return FALSE;
 	}
 
-	if (GetFileAttributes(tszDest) != INVALID_FILE_ATTRIBUTES)
+	if (IoGetFileAttributes(tszDest) != INVALID_FILE_ATTRIBUTES)
 	{
 		// rut ro, dir exists!
 		SetLastError(ERROR_ALREADY_EXISTS);
@@ -2931,7 +2990,7 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 		goto cleanup;
 	}
 
-	bResult  = GetFileAttributesEx(lpSrcDirectory->tszFileName, GetFileExInfoStandard, &FileAttributes);
+	bResult  = IoGetFileAttributesEx(lpSrcDirectory->tszFileName, GetFileExInfoStandard, &FileAttributes);
 	if (!bResult)
 	{
 		dwError = GetLastError();
@@ -2952,7 +3011,7 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 	}
 
 	// we have both cache entries "locked", now try to create the destination dir
-	if (!CreateDirectory(tszDest, NULL))
+	if (!IoCreateDirectory(tszDest, NULL))
 	{
 		dwError = GetLastError();
 		goto cleanup;
@@ -3033,7 +3092,7 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 	tszSrc[dwSrcLen] = _T('*');
 	tszSrc[dwSrcLen+1] = 0;
 
-	hFind = FindFirstFile(tszSrc, &FindData);
+	hFind = IoWin32FindFirstFile(tszSrc, &FindData);
 
 	if (hFind == INVALID_HANDLE_VALUE)
 	{
@@ -3053,7 +3112,7 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 		Progress_Update(lpProgress);
 	}
 
-	while (bFirst || FindNextFile(hFind, &FindData))
+	while (bFirst || IoWin32FindNextFile(hFind, &FindData))
 	{
 		bFirst  = FALSE;
 		bDelete   = TRUE;
@@ -3099,8 +3158,8 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 			}
 			continue;
 		}
-		_tcscpy_s(&tszSrc[dwSrcLen], MAX_PATH-dwSrcLen, tszName);
-		_tcscpy_s(&tszDest[dwDestLen], MAX_PATH-dwDestLen, tszName);
+		_tcscpy_s(&tszSrc[dwSrcLen],  _MAX_LONG_PATH+1-dwSrcLen,  tszName);
+		_tcscpy_s(&tszDest[dwDestLen], _MAX_LONG_PATH+1-dwDestLen, tszName);
 
 		if (FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 		{
@@ -3117,24 +3176,36 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 			continue;
 		}
 
-		if (!CopyFileEx(tszSrc, tszDest, IoCopyProgressCallback, lpProgress, &bContinue, COPY_FILE_FAIL_IF_EXISTS))
 		{
-			bSuccess = FALSE;
-			if (dwError == NO_ERROR)
-			{
-				dwError = GetLastError();
-			}
-		}
-		else if (bDelete)
-		{
-			// copy was successful, delete or at least mark file for deletion when all handles closed
-			lpProgress->dwArg3++;
-			if (!DeleteFile(tszSrc))
+			LPTSTR tszSrcL  = LongPath_Prefix(tszSrc);
+			LPTSTR tszDestL = LongPath_Prefix(tszDest);
+			BOOL   bCopyOk  = CopyFileEx(tszSrcL, tszDestL, IoCopyProgressCallback, lpProgress, &bContinue, COPY_FILE_FAIL_IF_EXISTS);
+			LongPath_Free(tszSrc,  tszSrcL);
+			LongPath_Free(tszDest, tszDestL);
+			if (!bCopyOk)
 			{
 				bSuccess = FALSE;
 				if (dwError == NO_ERROR)
 				{
 					dwError = GetLastError();
+				}
+			}
+			else if (bDelete)
+			{
+				// copy was successful, delete or at least mark file for deletion when all handles closed
+				lpProgress->dwArg3++;
+				{
+					LPTSTR tszLong = LongPath_Prefix(tszSrc);
+					BOOL   bDelOk  = DeleteFile(tszLong);
+					LongPath_Free(tszSrc, tszLong);
+					if (!bDelOk)
+					{
+						bSuccess = FALSE;
+						if (dwError == NO_ERROR)
+						{
+							dwError = GetLastError();
+						}
+					}
 				}
 			}
 		}
@@ -3147,7 +3218,7 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 		tszSrc[dwSrcLen] = _T('*');
 		tszSrc[dwSrcLen+1] = 0;
 
-		hFind = FindFirstFile(tszSrc, &FindData);
+		hFind = IoWin32FindFirstFile(tszSrc, &FindData);
 
 		if (hFind == INVALID_HANDLE_VALUE)
 		{
@@ -3155,7 +3226,7 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 			goto cleanup;
 		}
 
-		while (bFirst || FindNextFile(hFind, &FindData))
+		while (bFirst || IoWin32FindNextFile(hFind, &FindData))
 		{
 			bFirst  = FALSE;
 			bDelete   = TRUE;
@@ -3172,13 +3243,18 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 				  !_tcsicmp(tszName, _T("folder.jpg")) || !_tcsicmp(tszName, _T("AlbumArtSmall.jpg"))) ) )
 			{
 				// we want to delete these
-				_tcscpy_s(&tszSrc[dwSrcLen], MAX_PATH-dwSrcLen, tszName);
-				if (!DeleteFile(tszSrc))
+				_tcscpy_s(&tszSrc[dwSrcLen], _MAX_LONG_PATH+1-dwSrcLen, tszName);
 				{
-					bSuccess = FALSE;
-					if (dwError == NO_ERROR)
+					LPTSTR tszLong = LongPath_Prefix(tszSrc);
+					BOOL   bDelOk  = DeleteFile(tszLong);
+					LongPath_Free(tszSrc, tszLong);
+					if (!bDelOk)
 					{
-						dwError  = GetLastError();
+						bSuccess = FALSE;
+						if (dwError == NO_ERROR)
+						{
+							dwError  = GetLastError();
+						}
 					}
 				}
 				continue;
@@ -3194,9 +3270,13 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 	if (bSuccess && (ThisDir.dwFileAttributes != INVALID_FILE_ATTRIBUTES))
 	{
 		// everything appears to have gone OK... update directory timestamp
-		hNew = CreateFile(tszDestPath, FILE_WRITE_ATTRIBUTES,
-			(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE),
-			NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+		{
+			LPTSTR tszDestLong = LongPath_Prefix(tszDestPath);
+			hNew = CreateFile(tszDestLong, FILE_WRITE_ATTRIBUTES,
+				(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE),
+				NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+			LongPath_Free(tszDestPath, tszDestLong);
+		}
 		if (hNew != INVALID_HANDLE_VALUE)
 		{
 			if (!SetFileTime(hNew, &ThisDir.ftCreationTime, &ThisDir.ftLastAccessTime,
@@ -3207,7 +3287,11 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 			}
 			CloseHandle(hNew);
 			// to preserve the read-only directory flag for customized folders
-			SetFileAttributes(tszDestPath, ThisDir.dwFileAttributes);
+			{
+				LPTSTR tszDestLong = LongPath_Prefix(tszDestPath);
+				SetFileAttributes(tszDestLong, ThisDir.dwFileAttributes);
+				LongPath_Free(tszDestPath, tszDestLong);
+			}
 		}
 		else
 		{
@@ -3217,19 +3301,25 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 	}
 
 	// now try to delete the directory if we think everything OK at this point
-	if (bSuccess && !RemoveDirectory(tszSrcPath))
+	if (bSuccess)
 	{
-		bSuccess = FALSE;
-		dwError = GetLastError();
+		LPTSTR tszLong = LongPath_Prefix(tszSrcPath);
+		BOOL   bRemOk  = RemoveDirectory(tszLong);
+		LongPath_Free(tszSrcPath, tszLong);
+		if (!bRemOk)
+		{
+			bSuccess = FALSE;
+			dwError = GetLastError();
 
-		//  Restore directory's permission information
-		lpDirectoryTable  = &DirectoryTable[lpSrcDirectory->Hash % dwCacheBuckets];
-		EnterCriticalSection(&lpDirectoryTable->CriticalSection);
-		// we have it blocked so we know it hasn't moved or been deleted
-		AcquireDirCacheLock(lpDirectoryTable, lpSrcDirectory);
-		lpSrcDirectory->lForceUpdate  = TRUE;
-		WriteDirectoryPermissions(lpSrcDirectory, lpSrcDirectory->tszFileName, lpSrcDirectory->dwFileName);
-		ReleaseDirCacheLock(lpSrcDirectory, FALSE);
+			//  Restore directory's permission information
+			lpDirectoryTable  = &DirectoryTable[lpSrcDirectory->Hash % dwCacheBuckets];
+			EnterCriticalSection(&lpDirectoryTable->CriticalSection);
+			// we have it blocked so we know it hasn't moved or been deleted
+			AcquireDirCacheLock(lpDirectoryTable, lpSrcDirectory);
+			lpSrcDirectory->lForceUpdate  = TRUE;
+			WriteDirectoryPermissions(lpSrcDirectory, lpSrcDirectory->tszFileName, lpSrcDirectory->dwFileName);
+			ReleaseDirCacheLock(lpSrcDirectory, FALSE);
+		}
 	}
 
 	lpProgress->dwArg1++;

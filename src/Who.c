@@ -435,7 +435,7 @@ LPTSTR Admin_Who(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRING Args)
 		(PVOID)tszFileName, tszFileName, dwFileName);
 
 	{
-		TCHAR tszFullPath[MAX_PATH] = { 0 };
+		TCHAR tszFullPath[_MAX_LONG_PATH+1] = { 0 };
 		if (GetFullPathName(tszFileName, _countof(tszFullPath), tszFullPath, NULL))
 		{
 			Putlog(LOG_DEBUG, _T("Admin_Who: constructed message filename=%p (%s) dwFileName=%u fullpath=%s\r\n"),

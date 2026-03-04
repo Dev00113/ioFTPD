@@ -1,25 +1,59 @@
-﻿v7.9.1 Release Notes:
+v7.10.0 Release Notes:
 
 1) Files in \System:
-   Changed : ioFTPD.[exe,pdb] - Version 7.9.1.0
-   Changed : ioFTPD.ini - summary of changes by section...
-     [FTP_Service] : Certificate_Type = RSA
+   Changed : ioFTPD.[exe,pdb] - Version 7.10.0.0
+
+2) Long path support.  ioFTPD can now open, read, create, delete, and move
+   files and directories whose absolute path exceeds the Windows legacy
+   MAX_PATH (260-character) limit.  This requires Windows 10 build 14393
+   (Server 2016) or later, and the LongPathsEnabled registry key:
+     HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled = 1
+   A new INI key controls the feature:
+     [FTP]
+     Long_Path_Support = Auto   ; Auto (default), On, or Off
+   All FTP commands that access the filesystem (STOR, APPE, RETR, DELE, RMD,
+   MKD, RNFR, RNTO, MDTM, SIZE, MLST, MLSD) benefit automatically.  Internal
+   path buffers have been widened from MAX_PATH to 4096 characters.  User and
+   group VFS path fields are also widened; the on-disk file format (text
+   key=value) is unchanged and fully backward-compatible.
+
+3) "550 Path too long for NTFS." error reply.  When a file operation fails
+   because the path exceeds the NTFS limit, ioFTPD now returns the specific
+   error message:
+     550 <path>: Path too long for NTFS.
+   Previously these operations returned "550 <path>: Invalid filename." or an
+   OS-dependent message string, making it difficult to diagnose the failure.
+   The normalization covers all four Win32 error codes that different Windows
+   versions return for path-length rejections (ERROR_FILENAME_EXCED_RANGE,
+   ERROR_INVALID_NAME, ERROR_PATH_NOT_FOUND, ERROR_FILE_NOT_FOUND).
 
 
 *** New Options
 
-2) New ioFTPD.ini option (Certificate_Type under each [FTP_Service] section).
-   Controls which key type is used when ioFTPD auto-generates a certificate at
-   startup (Create_Certificate = True) or when the SITE MAKECERT command is
-   issued.  Accepted values are 'RSA' (the default, compatible with all clients
-   and older ioFTPD versions) and 'ECDSA' (smaller keys, faster handshakes,
-   recommended for new deployments).  Any unrecognised value silently falls back
-   to RSA.  Changing this setting has no effect on certificates that have already
-   been generated; delete the existing .pem / .key files and regenerate to switch
-   key types.  Both the automatic startup path and SITE MAKECERT log the selected
-   key type, warn on unrecognised values, and note when the default is applied.
+4) New ioFTPD.ini option (Certificate_Type under each [FTP_Service] section).
+   Selects the key algorithm used when auto-generating a TLS certificate at
+   startup (Create_Certificate = True) or when SITE MAKECERT is issued.
+   Accepted values:
+     Certificate_Type = RSA    (default, maximum client compatibility)
+     Certificate_Type = ECDSA  (smaller keys, faster handshakes)
+   Unrecognised values fall back to RSA with a log warning.
 
 
+*** Bug Fixes
+
+5) Fixed RMD returning "550 Directory not empty" for directories containing
+   only the internal .ioFTPD permissions file when the path was longer than
+   MAX_PATH.  The file deletion step was using the no-op LongPath_Prefix +
+   DeleteFile API pair, which silently failed for long paths; the permissions
+   file was left behind, causing RemoveDirectory to fail with ERROR_DIR_NOT_EMPTY.
+
+6) Fixed error information being lost when junction/symlink deletion failed.
+   The IoRemoveReparsePoint function called CloseHandle before saving the
+   last error code; CloseHandle clears GetLastError() on success, so the
+   caller always received error code 0 instead of the real failure reason.
+
+
+-------------------------------------------------------------------------------
 v7.9.0 Release Notes:
 
 1) Files in \System:
@@ -248,24 +282,6 @@ v7.9.0 Release Notes:
 22) Fixed idle time display precision for very long-running connections.  The
     dwTransferLastUpdated field has been promoted to ULONGLONG to avoid the
     32-bit tick wrap at 49.7 days.
-
-23) Fixed garbled log output when printing file paths and certificate names in
-    OpenSSL-related Putlog calls.  In a Unicode build the Putlog format string is
-    a wide character string where %s expects a wide (wchar_t*) argument.  Several
-    messages in Secure_Create_Ctx passed narrow char* variables directly, causing
-    the raw bytes to be walked as UTF-16LE code points and printed as mojibake.
-    Changed to %hs which forces narrow-string interpretation regardless of the
-    format string width.  Affected messages: DH param file path, DH application
-    failure cert name, OpenSSL_Groups invalid value, OpenSSL_Groups default fallback.
-
-24) Fixed the OpenSSL legacy provider (legacy.dll) silently failing to load on
-    production servers.  OpenSSL bakes the build-time --prefix path into
-    libcrypto-3.dll as the provider search directory.  On a server where that
-    build-machine path does not exist, OSSL_PROVIDER_load(legacy) fails
-    regardless of where legacy.dll has been placed.  Security_Init now calls
-    OSSL_PROVIDER_set_default_search_path before loading any provider, directing
-    OpenSSL to <exedir>\lib\ossl-modules\ at runtime.  This matches the
-    documented deployment location for legacy.dll on the production server.
 
 v7.8.0 Release Notes:
 

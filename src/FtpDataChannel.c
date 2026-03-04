@@ -413,7 +413,7 @@ BOOL FTP_Data_Close(LPFTPUSER lpUser)
             u64Len = ((UINT64)lpData->dwResumeOffset[0]) * 0x100000000ULL + lpData->dwResumeOffset[1];
             dwCrc = 0xFFFFFFFF;
 
-            hFile = CreateFile(lpData->File.RealPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+            hFile = IoCreateFile(lpData->File.RealPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
                 NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
             if (hFile != INVALID_HANDLE_VALUE)
             {

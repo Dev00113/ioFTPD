@@ -415,7 +415,7 @@ Start_Deadlock_Process()
 	PROCESS_INFORMATION  ProcessInformation;
 	STARTUPINFO          StartUpInfo;
 	HANDLE               hMyProcess, hFake;
-	TCHAR                pBuffer[MAX_PATH*2];
+	TCHAR                pBuffer[_MAX_LONG_PATH+1];
 	LPTSTR               tszLogDir;
 
 	//  Reset memory

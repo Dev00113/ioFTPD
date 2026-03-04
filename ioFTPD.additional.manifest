@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <!-- Opt in to the Windows 10 v1607+ long-path support.
+           With this flag set and HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled=1,
+           all Win32 file/directory APIs accept paths longer than MAX_PATH (260 chars).
+           ioFTPD detects and logs this at startup via LongPath_Init (Long_Path_Support=Auto). -->
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+    </windowsSettings>
+  </application>
+</assembly>

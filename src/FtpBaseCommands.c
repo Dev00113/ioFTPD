@@ -126,7 +126,7 @@ VOID MaybeDisplayStatus(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix)
 {
 	LPCLIENT lpClient;
 	LPTSTR tszBasePath, tszMsg;
-	TCHAR  tszFileName[_MAX_PATH+1];
+	TCHAR  tszFileName[_MAX_LONG_PATH+1];
 	INT32  iLen;
 	DWORD  n;
 
@@ -438,8 +438,8 @@ static BOOL FTP_XCRC(LPFTPUSER lpUser, IO_STRING *Args)
 					}
 					else
 					{
-						hFile = CreateFile(tszPath, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE,
-							0, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, 0);
+						hFile = IoCreateFile(tszPath, GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE,
+							NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
 						if (hFile != INVALID_HANDLE_VALUE)
 						{
 							dwCrc = ~0;
@@ -880,7 +880,7 @@ FTP_RenameTo(LPFTPUSER lpUser,
   TCHAR tcSave, *tcTemp;
   TCHAR *tszOldName;
   DWORD dwInitialTicks;
-  TCHAR tszPath[MAX_PATH+1];
+  TCHAR tszPath[_MAX_LONG_PATH+1];
 
   //  Get source filename
   tszOldName = lpUser->FtpVariables.vpRenameFrom.RealPath;
@@ -1310,7 +1310,7 @@ static BOOL FTP_FileTime(LPFTPUSER lpUser, IO_STRING *Args)
 	  if (!tszTime)
 	  {
 		  // just read and return the time
-		  if (!GetFileAttributesEx(tszPath, GetFileExInfoStandard, &FileAttributes) ||
+		  if (!IoGetFileAttributesEx(tszPath, GetFileExInfoStandard, &FileAttributes) ||
 			  !FileTimeToSystemTime(&FileAttributes.ftLastWriteTime, &SystemTime))
 		  {
 			  dwError = GetLastError();
@@ -1369,8 +1369,8 @@ static BOOL FTP_FileTime(LPFTPUSER lpUser, IO_STRING *Args)
 
   if (!dwError)
   {
-	  // try to set the time
-	  hFile = CreateFile(tszPath, GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
+	  // try to set the time (long-path aware — retries with W+\\?\ for paths > MAX_PATH)
+	  hFile = IoCreateFile(tszPath, GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
 		  NULL, OPEN_EXISTING, 0, NULL);
 	  if (hFile == INVALID_HANDLE_VALUE)
 	  {
@@ -1771,7 +1771,7 @@ static BOOL FTP_DirectoryPrint(LPFTPUSER lpUser, IO_STRING *Args)
 {
 	LPTSTR tszPath;
 	DWORD  dwLen;
-	TCHAR tszBuf[_MAX_PATH+1];
+	TCHAR tszBuf[_MAX_LONG_PATH+1];
 
 	if (lpUser->FtpVariables.bKeepLinksInPath)
 	{

@@ -820,7 +820,7 @@ LPTSTR Admin_RevertGroup(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRIN
 
 	if (tszFileName = Config_Get_Path(&IniConfigFile, _TEXT("Locations"), _TEXT("User_Files"), lpParent->tszDefaultName, NULL))
 	{
-		if (GetFileAttributes(tszFileName) != INVALID_FILE_ATTRIBUTES)
+		if (IoGetFileAttributes(tszFileName) != INVALID_FILE_ATTRIBUTES)
 		{
 			if (!DeleteFile(tszFileName))
 			{
@@ -2595,7 +2595,7 @@ VOID RecursiveAction(LPUSERFILE lpUserFile, MOUNTFILE hMountFile, LPTSTR lpPath,
 					 LPVOID lpContext)
 {
 	VIRTUALPATH      vpPath;
-	TCHAR            tszRealPath[MAX_PATH+1];
+	TCHAR            tszRealPath[_MAX_LONG_PATH+1];
 	DWORD            dwVirtLastPos, dwRealLastPos;
 	LPFILEINFO       lpFileInfo;
 	LPDIRECTORYINFO  lpDirInfo, lpFirstDirInfo;
@@ -2648,7 +2648,7 @@ VOID RecursiveAction(LPUSERFILE lpUserFile, MOUNTFILE hMountFile, LPTSTR lpPath,
 	vpPath.l_RealPath = 0;
 
 	ZeroMemory(&MountData, sizeof(MOUNT_DATA));
-	while (tszResolvedPath = PWD_Resolve(vpPath.pwd, hMountFile, &MountData, TRUE, MAX_PATH + 1))
+	while (tszResolvedPath = PWD_Resolve(vpPath.pwd, hMountFile, &MountData, TRUE, _MAX_LONG_PATH + 1))
 	{
 		stReal = sizeof(tszRealPath)/sizeof(*tszRealPath);
 		if (_tcsncpy_s(vpPath.RealPath, stReal, tszResolvedPath, _TRUNCATE) == STRUNCATE)
@@ -2931,7 +2931,7 @@ LPTSTR Admin_ChangeFileOwner(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_S
 	DWORD			dwError, dwLen, dwDepth;
 	LPTSTR			tszIdData;
 	TCHAR			*tpCheck;
-	TCHAR           tszWildName[_MAX_PATH+1];
+	TCHAR           tszWildName[_MAX_LONG_PATH+1];
 	LPBUFFER        lpBuffer;
 
 
@@ -2989,7 +2989,7 @@ LPTSTR Admin_ChangeFileOwner(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_S
 
 	// decide if this is a filename or a wildcard
 	bWild = isValidWildcard(tszToUpdate, &dwLen);
-	if (!dwLen || dwLen >= _MAX_PATH)
+	if (!dwLen || dwLen >= _MAX_LONG_PATH)
 	{
 		ERROR_RETURN(ERROR_PATH_NOT_FOUND, tszToUpdate);
 	}
@@ -2998,7 +2998,7 @@ LPTSTR Admin_ChangeFileOwner(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_S
 	AdminUpdate.bFileOnly = FALSE;
 	dwDepth = (bRecursive ? -1 : 1);
 
-	_tcscpy_s(tszWildName, _MAX_PATH+1, tszToUpdate);
+	_tcscpy_s(tszWildName, _MAX_LONG_PATH+1, tszToUpdate);
 	if (bWild)
 	{
 		if (tszWildName[dwLen-1] == _T('/'))
@@ -3173,7 +3173,7 @@ LPTSTR Admin_ChangeFileMode(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_ST
 	TCHAR			*tpCheck;
 	BOOL			bResult, bRecursive, bWild;
 	DWORD			dwError, dwLen, dwDepth;
-	TCHAR           tszWildName[_MAX_PATH+1];
+	TCHAR           tszWildName[_MAX_LONG_PATH+1];
 	LPBUFFER        lpBuffer;
 
 	dwError	= NO_ERROR;
@@ -3237,7 +3237,7 @@ LPTSTR Admin_ChangeFileMode(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_ST
 	PWD_Copy(&lpUser->CommandChannel.Path, &Path, FALSE);
 
 	bWild = isValidWildcard(tszToUpdate, &dwLen);
-	if (!dwLen || dwLen >= _MAX_PATH)
+	if (!dwLen || dwLen >= _MAX_LONG_PATH)
 	{
 		ERROR_RETURN(ERROR_PATH_NOT_FOUND, tszToUpdate);
 	}
@@ -5240,7 +5240,7 @@ LPTSTR Admin_CreateSymLink(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STR
 	//  Check access
 	if (! Access(lpUser->UserFile, lpParent, _I_WRITE) ||
 		PathCheck(lpUser->UserFile, vpName.pwd, "MakeDir") ||
-		!CreateDirectory(vpName.RealPath, NULL))
+		!IoCreateDirectory(vpName.RealPath, NULL))
 	{
 		goto cleanup;
 	}
@@ -5506,7 +5506,7 @@ LPTSTR Admin_Verify(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRING Arg
 	LPUSERFILE         lpUserFile;
 	LPGROUPFILE        lpGroupFile;
 	BOOL               bKnown, bFix, bFixed;
-	TCHAR              tszFileName[MAX_PATH+1];
+	TCHAR              tszFileName[_MAX_LONG_PATH+1];
 
 
 	//	Get arguments

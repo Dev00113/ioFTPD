@@ -158,6 +158,7 @@ static INIT_TABLE Init_Table[] =
   "Config",          Config_Init,          Config_DeInit,          1, 3,
   "File",            File_Init,            File_DeInit,            0, 3,
   "LogSystem",       LogSystem_Init,       LogSystem_DeInit,       0, 3,
+  "LongPath",        LongPath_Init,        NULL,                   0, 3,
   "Thread",          Thread_Init,          Thread_DeInit,          0, 2,
   "Windows",         Windows_Init,         Windows_DeInit,         2, 0,
   "Debug",           Debug_Init,           Debug_DeInit,           0, 3,

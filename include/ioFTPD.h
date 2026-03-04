@@ -47,6 +47,7 @@
 #include <IoResource.h>
 #include <StdDef.h>
 #include <ServerLimits.h>
+#include <LongPath.h>
 #include <UserFile.h>
 #include <GroupFile.h>
 #include <Time.h>

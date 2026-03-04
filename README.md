@@ -13,7 +13,9 @@
 5. [Dependencies](#dependencies)
 6. [Companion Tools](#companion-tools)
 7. [Configuration](#configuration)
-8. [Known Issues](#known-issues)
+8. [Long-Path Support](#long-path-support)
+9. [Known Issues](#known-issues)
+10. [Modernization Roadmap](#modernization-roadmap)
 
 ---
 
@@ -163,6 +165,7 @@ The memory subsystem (`Memory.c`) provides:
 | IoTime.c | Tick count helpers, time difference utilities |
 | Locking.c | `LOCKOBJECT` shared/exclusive lock implementation |
 | LogSystem.c | Log queue, file rotation, log formatting |
+| LongPath.c | Long-path support: OS detection, `\\?\` wrappers for all file APIs, `IoCanonicalizePath` |
 | Main.c | Entry point, init table, daemon lifecycle, service support |
 | Memory.c | Custom allocator, shared-ref allocator, debug memory tracking |
 | Message.c | Message file display (`MessageFile_Show`) |
@@ -207,6 +210,7 @@ Key structural types:
 | IoSocket.h (iosocket.h) | `IOSOCKET`, `SETSOCKETOVERLAPPED` |
 | IoOverlapped.h | `IOOVERLAPPED`, `SETSOCKETOVERLAPPED` |
 | LockObject.h | `LOCKOBJECT` |
+| LongPath.h | Long-path API declarations (`IoIsNtfsPathTooLongError`, `IoCreateFile`, `IoMoveFileEx`, etc.) |
 | ServerLimits.h | All compile-time constants |
 | Threads.h | `JOB`, `THREADDATA`, `THEME_FIELD` |
 | UserFile.h | `USERFILE`, `USERFILE_OLD` |
@@ -299,13 +303,61 @@ The server reads `ioFTPD.ini` (or a path specified on the command line) at start
 
 | Section | Notable Keys |
 |---------|-------------|
-| `[FTP]` | `Idle_TimeOut`, `Login_TimeOut`, `Login_Attempts`, `Transfer_Buffer`, `Socket_Send_Buffer`, `Idle_Exempt`, `Banned_User_Flag`, `Quiet_Login_Flag` |
+| `[FTP]` | `Idle_TimeOut`, `Login_TimeOut`, `Login_Attempts`, `Transfer_Buffer`, `Socket_Send_Buffer`, `Idle_Exempt`, `Banned_User_Flag`, `Quiet_Login_Flag`, `Long_Path_Support` |
 | `[Events]` | `OnServerStart`, `OnServerStop`, `OnFtpLogOut`, `OnFtpUpload`, `OnFtpDownload` |
 | `[Network]` | `Log_OpenSSL_Transfer_Errors`, `Scheduler_Update_Speed` |
 | `[VFS_PreLoad]` | `DELAY` |
 | `[Services]` | FTP service definitions (port, device binding, TLS settings) |
 
 Configuration is live-reloadable for many settings via `SITE CONFIG RELOAD` or equivalent events.
+
+---
+
+## Long-Path Support
+
+ioFTPD supports file system paths longer than the legacy `MAX_PATH` (260-character) Windows limit on
+Windows 10 build 14393+ / Server 2016+, subject to the requirements below.
+
+### Requirements
+
+All three must be present:
+
+1. **Windows 10 build 14393** (v1607) or Server 2016 or later.
+2. **Registry opt-in** — `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled = 1`.
+3. **Manifest** — `ioFTPD.exe` embeds `<longPathAware>true</longPathAware>` (built in at compile time via `ioFTPD.additional.manifest`).
+
+Control via `ioFTPD.ini`:
+
+```ini
+[FTP]
+Long_Path_Support = Auto   ; Auto (default), On, or Off
+```
+
+When `Auto`, ioFTPD probes the OS version and registry at startup and logs the result.
+
+### Behavior by Backend
+
+| FTP Command / Feature | Local NTFS | Mapped Drive (Z:\\) | UNC (\\\\server\\share) | Notes |
+|-----------------------|-----------|---------------------|------------------------|-------|
+| LIST / MLSD (directory listing) | ✔ | ✔ | ✔ (until SMB limit) | SMB often fails earlier than NTFS |
+| CWD / PWD | ✔ | ✔ | ✔ | UNC normalisation may fail at extreme depth |
+| STOR / APPE (upload) | ✔ | ✔ | ⚠ May fail early | SMB rejects long normalised paths |
+| RETR (download) | ✔ | ✔ | ⚠ Same as STOR | |
+| DELE (file delete) | ✔ | ✔ | ✔ (until SMB limit) | |
+| RMD (directory delete) | ✔ | ✔ | ✔ (until SMB limit) | `.ioFTPD` handling fully long-path aware |
+| RNFR / RNTO (rename/move) | ✔ | ✔ | ⚠ Destination path often fails first | `.ioFTPD` creation may trigger SMB limit |
+| SIZE / MDTM / MLST | ✔ | ✔ | ✔ (until SMB limit) | |
+| DirectoryCache recursion | ✔ | ✔ | ⚠ Deep UNC paths may fail | |
+| Reparse points (junctions) | ✔ | ✔ | ❌ Not supported | SMB cannot expose reparse metadata |
+| Maximum path length | ~32 767 UTF-16 chars | ~32 767 UTF-16 chars | ⚠ Typically 1–4 k (SMB server-dependent) | SMB is the limiting factor |
+| Per-component limit | 255 chars | 255 chars | ⚠ 255 or less (some servers: 240 or 200) | |
+
+### Key Points
+
+- **Local NTFS** is the most robust backend for long paths.
+- **Mapped drives** behave identically to local NTFS — Windows resolves the UNC path before ioFTPD sees it.
+- **UNC / SMB paths** are the weakest: SMB servers impose their own normalisation limits, often failing long before NTFS would.  SMB normalisation commonly returns `ERROR_FILE_NOT_FOUND` (2) or `ERROR_PATH_NOT_FOUND` (3) for paths that exceed its limit — ioFTPD classifies these correctly and returns `550 Path too long for NTFS.` to the FTP client.
+- **Error reporting** — when any file operation fails due to path length, the FTP client receives `550 <path>: Path too long for NTFS.` regardless of which underlying error code Windows produced.
 
 ---
 
@@ -320,3 +372,39 @@ Configuration is live-reloadable for many settings via `SITE CONFIG RELOAD` or e
 7. **IPv4 only**. The codebase is hardcoded to `AF_INET`/`sockaddr_in`. IPv6 is not supported.
 8. **Win32 message window dependency**. The async I/O dispatch relies on a hidden Win32 message window, a design pattern unsuitable for modern server applications.
 9. **`GetVersionEx` is deprecated** since Windows 8.1. Behaviour may be incorrect on Windows 10/11/Server 2025.
+
+---
+
+## Modernization Roadmap
+
+The following changes are recommended in rough priority order:
+
+### Critical (Security)
+
+1. ~~**Upgrade OpenSSL to 3.x**~~ **Done** – OpenSSL 3.6.1 with TLS 1.3 and ECDHE support (see `OpenSSL.txt`).
+2. **Replace SHA-1 password hashing** – Migrate to `bcrypt`/`Argon2` with per-user salts. Provide a migration path for existing password files.
+3. **Enable ASLR and DEP** – Set `RandomizedBaseAddress=true` and `DataExecutionPrevention=true` in all configurations.
+4. ~~**Upgrade Tcl**~~ **Done** – Tcl 9.0.2, official unmodified build, no source patches required.
+5. **Harden `DummyEncode`/`DummyDecode`** – Replace with a standard authenticated encryption scheme (AES-GCM).
+
+### High Priority (Stability / Safety)
+
+6. **Port to 64-bit** – Add an `x64` platform target. Eliminate all `(ULONG)` pointer casts in `Memory.c` (use `(UINTPTR_T)` / `SIZE_T`). This is a prerequisite for modern Windows hardening features.
+7. **Enable Buffer Security Check (`/GS`)** – Currently disabled in Debug config; enable across all configurations.
+8. **Replace spin-lock busy-waits** – Replace `while (InterlockedExchange(&lock, TRUE)) SwitchToThread()` with proper `CRITICAL_SECTION` or `SRWLock` usage.
+9. **Fix `DummyEncode` unsigned underflow** – Guard the loop with an early-out if `dwIn < 4`.
+10. **Replace `GetVersionEx`** – Use `VerifyVersionInfo` or `RtlGetVersion` (via `versionhelpers.h`).
+
+### Medium Priority (Modernization)
+
+11. **IPv6 support** – Generalize socket layer to `AF_UNSPEC`, `sockaddr_storage`, and `getaddrinfo`/`getnameinfo`.
+12. **Replace Win32 message window** – Move async event dispatch to a dedicated I/O thread or use `PostQueuedCompletionStatus` exclusively.
+13. **Replace INI-file user database** – Consider SQLite or a structured binary format with proper locking semantics.
+14. **Remove commented-out dead code** – `Unused-code.txt`, commented `BindSocketToDevice`, `UnbindSocket`, deadlock detection.
+15. **Replace `wsprintf` with safe alternatives** – Use `StringCbPrintf` or `snprintf_s`.
+
+### Long Term (Architecture)
+
+16. **Add automated tests** – No tests exist. Start with unit tests for `Memory.c`, `Compare.c`, `ConfigReader.c`, `RowParser.c`, and `Buffer.c`.
+17. **Cross-platform consideration** – The IOCP and Win32 dependency is pervasive, but abstracting the platform layer would enable porting to Linux (io_uring) or BSD (kqueue).
+18. **Replace custom memory allocator** – The bucket allocator is 32-bit only and unmaintainable. Modern MSVC CRT or `mimalloc` are safer alternatives.

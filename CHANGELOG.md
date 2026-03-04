@@ -6,9 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [7.9.1] — Unreleased
+## [7.10.0] — 2026-03-03
 
 ### Added
+
+- **Long-path support** — ioFTPD can now open, read, create, delete, and move files
+  and directories whose absolute path exceeds the legacy `MAX_PATH` (260-character)
+  limit on Windows 10 build 14393+ / Server 2016+.  New `[FTP] Long_Path_Support`
+  ini config key accepts `Auto` (default — detects OS capability and the
+  `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled` registry flag),
+  `On` (force enable), or `Off` (disable).  New `src/LongPath.c` module handles OS
+  detection and transparently prepends the `\\?\` prefix at Win32 API call sites in
+  `File.c` and `DirectoryCache.c`; internal buffers in `IoMoveDirectory` widened from
+  `MAX_PATH` to `_MAX_LONG_PATH` (4 096 characters).  Serialised on-disk structures
+  (user/group VFS paths) are unchanged for binary compatibility.
 
 - **`Certificate_Type`** per-service ini config key — selects the key algorithm
   used when auto-generating a certificate at startup (`Create_Certificate = True`)
@@ -18,6 +29,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`Secure_MakeCert` and `Admin_MakeCert`) log the selected type, emit a
   `LOG_ERROR` on invalid values, and note when the default is applied.
   `Admin_MakeCert` also writes the selection to the user's FTP response buffer.
+
+### Fixed
+
+- **`RMD` false "550 Directory not empty"** — when a directory contained only the
+  internal `.ioFTPD` permissions file, `IoRemoveDirectory` used the no-op
+  `LongPath_Prefix` + `DeleteFile` to remove it, which silently failed for long
+  paths; the directory then appeared non-empty to `RemoveDirectory`.  Fixed by
+  replacing that call with `IoDeleteFileEx`, which applies the `\\?\` retry
+  automatically.
+
+- **NTFS path-too-long error normalization** — `IoIsNtfsPathTooLongError` now
+  recognizes all four Win32 error codes that Windows returns for path-length
+  rejections, depending on OS version and path length:
+  `ERROR_FILENAME_EXCED_RANGE` (206, always), `ERROR_INVALID_NAME` (123, always),
+  `ERROR_PATH_NOT_FOUND` (3, always after a `\\?\` retry), and
+  `ERROR_FILE_NOT_FOUND` (2, when path length ≥ `MAX_PATH` — returned by Windows
+  during internal path normalisation before the filesystem API runs, instead of 206,
+  on some Windows builds for very long paths).  All six long-path wrappers
+  (`IoCreateFile`, `IoGetFileAttributesEx`, `IoDeleteFileEx`, `IoRemoveDirectoryEx`,
+  `IoMoveFileEx`, `IoOpenReparsePointForDelete`) normalize these to
+  `ERROR_FILENAME_EXCED_RANGE` after their `\\?\` retry, producing the consistent
+  FTP reply `550 Path too long for NTFS.` across STOR, APPE, RETR, DELE, RMD,
+  RNFR, RNTO, MDTM, SIZE, and MLST.  Previously these operations returned
+  `550 Invalid filename.` or an OS-dependent message.
+
+- **`IoRemoveReparsePoint` silent error loss** — `CloseHandle` called after a
+  failed `FSCTL_GET_REPARSE_POINT` or `FSCTL_DELETE_REPARSE_POINT` clobbered
+  `GetLastError()`, causing the caller to receive error 0 instead of the real
+  failure code and log nothing useful.
 
 ---
 

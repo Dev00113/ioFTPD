@@ -27,8 +27,8 @@ typedef struct _USERFILE
   INT   Gid;                                /* User group id */
 
   CHAR  Tagline[128 + 1];                   /* Info line */
-  CHAR  MountFile[_MAX_PATH + 1];           /* Root directory */
-  CHAR  Home[_MAX_PATH + 1];                /* Home directory */
+  CHAR  MountFile[_MAX_LONG_PATH + 1];      /* Root directory */
+  CHAR  Home[_MAX_LONG_PATH + 1];          /* Home directory */
   CHAR  Flags[32 + 1];                      /* Flags */
   INT   Limits[5];                          /*  Up max speed, dn max speed,
                                                 ftp logins, telnet, http */

@@ -50,7 +50,7 @@ static DATAROW UserDataRow[] =
   "ExpiresAt", offsetof(USERFILE, ExpiresAt), DT_INT64, 1, 0,
   "flags", offsetof(USERFILE, Flags), DT_STRING, 1, 32,
   "groups", offsetof(USERFILE, Groups), DT_GROUPID, MAX_GROUPS, 0,
-  "home", offsetof(USERFILE, Home), DT_STRING, 1, _MAX_PATH,
+  "home", offsetof(USERFILE, Home), DT_STRING, 1, _MAX_LONG_PATH,
   "ips", offsetof(USERFILE, Ip), DT_STRING, MAX_IPS, _IP_LINE_LENGTH,
   "limits", offsetof(USERFILE, Limits), DT_INT32, 5, 0,
   "LimitPerIP", offsetof(USERFILE, LimitPerIP), DT_INT32, 1, 0,
@@ -65,7 +65,7 @@ static DATAROW UserDataRow[] =
   "ratio", offsetof(USERFILE, Ratio), DT_INT32, MAX_SECTIONS, 0,
   "tagline", offsetof(USERFILE, Tagline), DT_STRING, 1, 128,
   "theme", offsetof(USERFILE, Theme), DT_INT32, 1, 0,
-  "vfsfile", offsetof(USERFILE, MountFile), DT_STRING, 1, _MAX_PATH,
+  "vfsfile", offsetof(USERFILE, MountFile), DT_STRING, 1, _MAX_LONG_PATH,
   "wkdn", offsetof(USERFILE, WkDn), DT_INT64, MAX_SECTIONS * 3, 0,
   "wkup", offsetof(USERFILE, WkUp), DT_INT64, MAX_SECTIONS * 3, 0
 
@@ -115,7 +115,7 @@ static INT32 User_StandardCreate(LPTSTR tszUserName, INT32 Gid)
   DWORD    dwError;
   TCHAR    *tpOffset;
   TCHAR    tpBuffer[128];
-  TCHAR    tszFileName[MAX_PATH+1];
+  TCHAR    tszFileName[_MAX_LONG_PATH+1];
   INT32    iReturn, iLen;
 
   //  Setup local variables
@@ -165,9 +165,9 @@ static INT32 User_StandardCreate(LPTSTR tszUserName, INT32 Gid)
 	  // Previous code compared against _tcslen(tszSourceFile) instead of tszGroupName —
 	  // that was wrong and could allow overflow when the group name is longer than the
 	  // source path.
-	  if (iLen + 8 + _tcslen(tszGroupName) < MAX_PATH)
+	  if (iLen + 8 + _tcslen(tszGroupName) < _MAX_LONG_PATH)
 	  {
-		  _stprintf_s(tpOffset, MAX_PATH - iLen, _T("Default=%s"), tszGroupName);
+		  _stprintf_s(tpOffset, _MAX_LONG_PATH - iLen, _T("Default=%s"), tszGroupName);
 		  if (! CopyFile(tszSourceFile, tszTargetFile, FALSE))
 		  {
 			  tszGroupName = NULL;
@@ -179,9 +179,9 @@ static INT32 User_StandardCreate(LPTSTR tszUserName, INT32 Gid)
 	  }
   }
 
-  if (!tszGroupName && (iLen + 12 < MAX_PATH))
+  if (!tszGroupName && (iLen + 12 < _MAX_LONG_PATH))
   {
-	  _stprintf_s(tpOffset, MAX_PATH - iLen, _T("Default.User"));
+	  _stprintf_s(tpOffset, _MAX_LONG_PATH - iLen, _T("Default.User"));
 
 	  if (! CopyFile(tszSourceFile, tszTargetFile, FALSE))
 	  {
@@ -220,8 +220,8 @@ static INT32 User_StandardCreate(LPTSTR tszUserName, INT32 Gid)
   else
   {
 	  // A UID is at most 10 decimal digits + null = 11 chars.  iLen was checked
-	  // above when building the template path, so MAX_PATH - iLen > 11.
-	  _stprintf_s(tpOffset, MAX_PATH - iLen, _T("%i"), iReturn);
+	  // above when building the template path, so _MAX_LONG_PATH - iLen > 11.
+	  _stprintf_s(tpOffset, _MAX_LONG_PATH - iLen, _T("%i"), iReturn);
 	  //  Move file
 	  if (! MoveFileEx(tszTargetFile, tszSourceFile, MOVEFILE_REPLACE_EXISTING))
 	  {
@@ -477,7 +477,7 @@ static BOOL User_StandardClose(LPUSERFILE lpUserFile)
 BOOL
 User_Default_Open(LPUSERFILE lpUserFile, INT32 id)
 {
-	TCHAR     tszFileName[MAX_PATH+1];
+	TCHAR     tszFileName[_MAX_LONG_PATH+1];
 	LPTSTR    tszOffset, tszGroupName;
 	INT       iReturn, iLen;
 
@@ -503,7 +503,7 @@ User_Default_Open(LPUSERFILE lpUserFile, INT32 id)
 			SetLastError(ERROR_GROUP_NOT_FOUND);
 			return TRUE;
 		}
-		if (iLen + _tcslen(tszGroupName) + 1 > MAX_PATH)
+		if (iLen + _tcslen(tszGroupName) + 1 > _MAX_LONG_PATH)
 		{
 			SetLastError(ERROR_BAD_PATHNAME);
 			return TRUE;

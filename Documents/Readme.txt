@@ -64,11 +64,11 @@ MA 02110-1301, USA.
    The file is called vc_redist.x86.exe.  Run it and then run Windows Update
    to make sure you have the latest patches.
 
-   NOTE: v7.9.0 ships with new DLL names.  libssl.dll and libcrypto.dll
+   NOTE: v7.9.0 introduced new DLL names.  libssl.dll and libcrypto.dll
    replace the old libeay32.dll and ssleay32.dll (OpenSSL 3.6.1), and
-   tcl90.dll replaces tcl85t.dll (Tcl 9.0).  If upgrading from a previous
-   version you MUST remove the old DLLs from the \system directory before
-   running the new build, otherwise the wrong library may be loaded.
+   tcl90.dll replaces tcl85t.dll (Tcl 9.0).  If upgrading from a release
+   prior to v7.9.0 you MUST remove the old DLLs from the \system directory
+   before running the new build, otherwise the wrong library may be loaded.
 
 8) ioGui2 is setup to login using the default username/password/port for the
    master account (ioFTPD/ioFTPD/5420) which we will now change.  If the
@@ -166,6 +166,41 @@ MA 02110-1301, USA.
    the forum.
 
 5) Firewall settings correct?
+
+
+|--------------------------------------------------(0x04)-----(long-paths)--|
+
+### Long-Path Support (v7.10.0+)
+
+ioFTPD can handle paths longer than the Windows legacy 260-character limit
+(MAX_PATH) on Windows 10 build 14393 / Server 2016 and later.
+
+Requirements (all three must be present):
+  1. Windows 10 build 14393 (v1607) or Server 2016 or later.
+  2. Registry key set to 1:
+       HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled
+  3. ioFTPD.exe manifest declares longPathAware (embedded at build time).
+
+INI configuration:
+  [FTP]
+  Long_Path_Support = Auto   ; Auto (default), On, or Off
+
+Long-path behavior by storage backend:
+
+  Local NTFS   — fully supported for all FTP operations.
+  Mapped drive — same as local NTFS (Windows resolves UNC before ioFTPD sees it).
+  UNC / SMB    — partially supported.  SMB servers impose their own path limits
+                 (typically 1-4 KB depending on server), often failing before NTFS
+                 would.  Affected commands: STOR, APPE, RETR, RNFR/RNTO, directory
+                 recursion.  Reparse point (junction) operations are not supported
+                 over SMB.
+
+When a path is too long for NTFS or the SMB server, ioFTPD returns:
+  550 <path>: Path too long for NTFS.
+
+This applies regardless of which specific Windows error code was returned
+internally (ERROR_FILENAME_EXCED_RANGE, ERROR_INVALID_NAME,
+ERROR_PATH_NOT_FOUND, or ERROR_FILE_NOT_FOUND for very long paths).
 
 
 |--------------------------------------------------(0x05)---------(support)--|

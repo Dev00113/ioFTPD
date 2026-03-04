@@ -178,8 +178,8 @@ BOOL ioOpenFile(LPIOFILE lpFile, DWORD dwClientId, LPSTR szFileName,
 		}
 	}
 
-	//	Open file
-	lpFile->FileHandle = CreateFile(szFileName, dwDesiredAccess, dwShareMode, NULL,
+	//	Open file (long-path aware — retries with W+\\?\ prefix on path-length errors)
+	lpFile->FileHandle = IoCreateFile(szFileName, dwDesiredAccess, dwShareMode, NULL,
 		dwCreationDisposition, FILE_FLAG_OVERLAPPED|FILE_FLAG_SEQUENTIAL_SCAN, NULL);
 	if (lpFile->FileHandle == INVALID_HANDLE_VALUE)
 	{

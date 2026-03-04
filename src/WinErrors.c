@@ -65,6 +65,9 @@ LPWSTR FormatError(DWORD dwError, LPWSTR wszBuffer, LPDWORD lpBufferSize)
 	case ERROR_INVALID_NAME:
 		WERROR(wszBuffer, dwReturn, L"Invalid filename");
 		break;
+	case ERROR_FILENAME_EXCED_RANGE:
+		WERROR(wszBuffer, dwReturn, L"Path too long for NTFS");
+		break;
 	case IO_APPEND_SCRIPT:
 	case IO_STORE_SCRIPT:
 	case IO_NEWDIR_SCRIPT:

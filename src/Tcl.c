@@ -1368,7 +1368,7 @@ static BOOL Tcl_List_Print(LPLISTING lpListing, LPTSTR tszFileName, BOOL bDotDir
 	Tcl_Interp      *lpInterp;
 	Tcl_Obj         *lpResult = NULL, *lpNew, *lpList = NULL;
 	LPTSTR		     tszTemp;
-	TCHAR            tszRealPath[MAX_PATH+1];
+	TCHAR            tszRealPath[_MAX_LONG_PATH+1];
 	DWORD            n, m;
 	UINT64           u64Time;
 	LPMOUNT_ITEM     lpMountItem;
@@ -2984,12 +2984,12 @@ Tcl_MountFile(LPTCL_INTERPRETER lpTclInterpreter,
   MOUNTFILE   hMountFile;
   LPTCL_DATA  lpTclData;
   TCHAR    *tpOffset;
-  TCHAR    tszFileName[_MAX_PATH + 1];
+  TCHAR    tszFileName[_MAX_LONG_PATH + 1];
   DWORD    dwFileName;
   LPSTR    szCommand, tszArgument;
   Tcl_Obj    *lpResult;
   INT      iResult, iReturn;
-  char     temp2[_MAX_PATH+1];
+  char     temp2[_MAX_LONG_PATH+1];
 
   iResult  = -1;
   iReturn  = TCL_OK;
@@ -3005,7 +3005,7 @@ Tcl_MountFile(LPTCL_INTERPRETER lpTclInterpreter,
     {
       //  Copy string to work buffer
       dwFileName  = _tcslen(tszArgument);
-      if (dwFileName > _MAX_PATH) dwFileName  = _MAX_PATH;
+      if (dwFileName > _MAX_LONG_PATH) dwFileName  = _MAX_LONG_PATH;
       CopyMemory(tszFileName, tszArgument, dwFileName * sizeof(TCHAR));
       tszFileName[dwFileName]  = '\0';
       //  Convert string to native form
@@ -3041,7 +3041,7 @@ Tcl_AppendMountPoint(LPTSTR tszPath, DWORD dwLen, DWORD dwLeft, Tcl_Obj *lpResul
 	LPMOUNT_POINT  lpMountPoint;
 	INT            i;
 	DWORD          n, m, dwLen2;
-	CHAR           szReal[MAX_PATH];
+	CHAR           szReal[_MAX_LONG_PATH+1];
 	LPSTR          szName, szTemp;
 
 	for (n=0 ; n<lpMountTable->dwMountPoints ; n++)
@@ -3065,7 +3065,7 @@ Tcl_AppendMountPoint(LPTSTR tszPath, DWORD dwLen, DWORD dwLeft, Tcl_Obj *lpResul
 			for ( m=0 ; m<lpMountPoint->dwSubMounts ; m++ )
 			{
 				i = lpMountItem[m].dwFileName;
-				if (i > MAX_PATH) i = MAX_PATH-1;
+				if (i > _MAX_LONG_PATH) i = _MAX_LONG_PATH;
 				szName = lpMountItem[m].szFileName;
 				szTemp = szReal;
 
@@ -3111,7 +3111,7 @@ Tcl_MountPoints(LPTCL_INTERPRETER lpTclInterpreter,
 	MOUNTFILE      hMountFile;
 	Tcl_Obj       *lpResult; // *lpNew;
 	TCHAR          tszPath[_MAX_PWD + 1];
-	TCHAR          tszFileName[_MAX_PATH + 1];
+	TCHAR          tszFileName[_MAX_LONG_PATH + 1];
 	LPTSTR         tszArg, tpOffset;
 	DWORD          dwFileName;
 	BOOL           bOpened;
@@ -3125,7 +3125,7 @@ Tcl_MountPoints(LPTCL_INTERPRETER lpTclInterpreter,
 		(tszArg = Tcl_IoGetString(Objv[1], temp1, sizeof(temp1), 0)))
 	{
 		dwFileName  = _tcslen(tszArg);
-		if (dwFileName > _MAX_PATH) dwFileName  = _MAX_PATH;
+		if (dwFileName > _MAX_LONG_PATH) dwFileName  = _MAX_LONG_PATH;
 		CopyMemory(tszFileName, tszArg, dwFileName * sizeof(TCHAR));
 		tszFileName[dwFileName] = '\0';
 		//  Convert string to native form
@@ -4789,7 +4789,7 @@ BOOL TclExecute2(LPEVENT_DATA lpEventData, IO_STRING *Arguments, LPINT lpiResult
   Tcl_SetVariable(lpInterp, "uniqueid", lpUniqueId);
   Tcl_SetVariable(lpInterp, "user", lpUserName);
 
-  if (GetFileAttributes(tszFileName) == INVALID_FILE_ATTRIBUTES)
+  if (IoGetFileAttributes(tszFileName) == INVALID_FILE_ATTRIBUTES)
   {
 	  bReturn = TRUE;
 	  dwErrorCode = ERROR_SCRIPT_MISSING;

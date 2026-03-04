@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright(c) 2006 iniCom Networks, Inc.
  *
  * This file is part of ioFTPD.
@@ -595,10 +595,14 @@ Create_Directory(LPFTPUSER lpUser,
   if (! tszFileName)
   {
     pError[0]  = GetLastError();
+    Putlog(LOG_DEBUG, "MKD: PWD_CWD2 failed for '%s', err=%u\r\n", tszDirectoryName, pError[0]);
     return TRUE;
   }
 
-  if (GetFileAttributes(tszFileName) != INVALID_FILE_ATTRIBUTES)
+  Putlog(LOG_DEBUG, "MKD: vpath='%s' (len=%u) rpath='%s' (len=%u)\r\n",
+         Path.pwd, Path.len, tszFileName, (DWORD)_tcslen(tszFileName));
+
+  if (IoGetFileAttributes(tszFileName) != INVALID_FILE_ATTRIBUTES)
   {
 	  // it exists already...
 	  PWD_Free(&Path);
@@ -630,7 +634,9 @@ Create_Directory(LPFTPUSER lpUser,
 			  else
 			  {
 				  //  Create new directory
-				  if (CreateDirectory(tszFileName, NULL))
+				  Putlog(LOG_DEBUG, "MKD: CreateDirectory path='%s' (len=%u)\r\n",
+			         tszFileName, (DWORD)_tcslen(tszFileName));
+			  if (IoCreateDirectory(tszFileName, NULL))
 				  {
 					  //  Set directory ownership
 					  ZeroMemory(&UpdateData, sizeof(VFSUPDATE));
@@ -648,6 +654,8 @@ Create_Directory(LPFTPUSER lpUser,
 				  else 
 				  {
 					  dwError = GetLastError();
+					  Putlog(LOG_DEBUG, "MKD: IoCreateDirectory FAILED path='%s' len=%u err=%u\r\n",
+					    tszFileName, (DWORD)_tcslen(tszFileName), dwError);
 					  wsprintf(tszArguments, "\"%s\" \"%s\" %u", tszFileName, Path.pwd, dwError);
 					  ((BOOL (__cdecl *)(LPVOID, LPTSTR, DWORD))Event)(EventParam, tszArguments, dwError);
 				  }
@@ -862,6 +870,9 @@ Upload(LPFTPUSER lpUser,
   dwError  = NO_ERROR;
   tszFileName = Data->File.RealPath;
 
+  Putlog(LOG_DEBUG, "Upload: real path='%s' len=%u\r\n",
+         tszFileName, (DWORD)_tcslen(tszFileName));
+
   //  Get fileinfo
   if (GetFileInfo(tszFileName, &lpFileInfo))
   {
@@ -883,7 +894,8 @@ Upload(LPFTPUSER lpUser,
   else
   {
 	  dwError = GetLastError();
-	  
+	  Putlog(LOG_DEBUG, "Upload: GetFileInfo failed err=%u — getting parent info\r\n", dwError);
+
 	  if (dwError == ERROR_FILE_NOT_FOUND)
 	  {
 		  bNoUpdate = FALSE;
@@ -892,6 +904,7 @@ Upload(LPFTPUSER lpUser,
 		  if (! bResult)
 		  {
 			  dwError  = GetLastError();
+			  Putlog(LOG_DEBUG, "Upload: GetVfsParentFileInfo failed err=%u\r\n", dwError);
 		  }
 		  else
 		  {
@@ -925,6 +938,8 @@ Upload(LPFTPUSER lpUser,
 		  //  Create/open file
 		  if (dwError == NO_ERROR)
 		  {
+			  Putlog(LOG_DEBUG, "Upload: ioOpenFile path='%s' len=%u disp=%u\r\n",
+			         tszFileName, (DWORD)_tcslen(tszFileName), dwCreationDisposition);
 			  if (! ioOpenFile(&Data->IoFile, dwClientId, tszFileName, GENERIC_READ|GENERIC_WRITE,
 				  FILE_SHARE_READ|FILE_SHARE_DELETE, dwCreationDisposition))
 			  {
@@ -960,12 +975,14 @@ Upload(LPFTPUSER lpUser,
 			  else
 			  {
 				  dwError  = GetLastError();
+				  Putlog(LOG_DEBUG, "Upload: ioOpenFile failed err=%u\r\n", dwError);
 			  }
 		  }
 	  }
-	  else 
+	  else
 	  {
-		  dwError  = GetLastError();  
+		  dwError  = GetLastError();
+		  Putlog(LOG_DEBUG, "Upload: Access/PathCheck failed err=%u\r\n", dwError);
 	  }
 	  CloseFileInfo(lpFileInfo);
   }

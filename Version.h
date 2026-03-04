@@ -1,8 +1,8 @@
 #pragma once
 
 #define IOFTPD_VERSION_MAJOR 7
-#define IOFTPD_VERSION_MINOR 9
-#define IOFTPD_VERSION_PATCH 1
+#define IOFTPD_VERSION_MINOR 10
+#define IOFTPD_VERSION_PATCH 0
 #define IOFTPD_VERSION_BUILD 0
 
 // String helpers
