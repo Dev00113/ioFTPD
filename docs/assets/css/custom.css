@@ -1,0 +1,5 @@
+.content {
+  margin-left: 280px;   /* pushes content away from sidebar */
+  padding: 20px 40px;   /* adds breathing room inside content */
+  max-width: 900px;     /* keeps text readable */
+}
