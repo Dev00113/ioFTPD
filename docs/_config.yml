@@ -1,0 +1,15 @@
+title: ioFTPD
+description: Modernized Windows FTP/FTPS server with long-path support and updated cryptography.
+theme: jekyll-theme-cayman
+
+# Enable custom layouts
+markdown: kramdown
+plugins:
+  - jekyll-include-cache
+
+# Tell GitHub Pages to use our custom layout
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default

@@ -1,0 +1,45 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 240px;
+  height: 100%;
+  background: #f4f4f4;
+  border-right: 1px solid #ddd;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.sidebar-container h2 {
+  margin-top: 0;
+  font-size: 20px;
+}
+
+.sidebar-nav {
+  list-style: none;
+  padding-left: 0;
+}
+
+.sidebar-nav li {
+  margin: 10px 0;
+}
+
+.sidebar-nav a {
+  text-decoration: none;
+  color: #0366d6;
+}
+
+.sidebar-nav a:hover {
+  text-decoration: underline;
+}
+
+.content {
+  margin-left: 260px;
+  padding: 20px;
+  max-width: 900px;
+}
