@@ -1,3 +1,7 @@
+---
+title: Long Path Support
+---
+
 # Long Path Support in ioFTPD
 
 ioFTPD v7.10.0 introduces full long‑path support across all major FTP operations. This page explains how long‑path handling works, what Windows actually supports, and the real‑world limitations users will encounter on NTFS, mapped drives, and UNC/SMB shares.

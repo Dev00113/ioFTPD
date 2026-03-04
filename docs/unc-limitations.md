@@ -1,3 +1,7 @@
+---
+title: UNC Path Limitations
+---
+
 # UNC / SMB Path Limitations
 
 UNC and SMB paths behave very differently from local NTFS paths, even when Windows long‑path support is enabled. This page explains the real limitations of SMB, why long paths may still fail, and how ioFTPD behaves when operating on UNC shares.

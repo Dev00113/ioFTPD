@@ -1,3 +1,7 @@
+---
+title: Change log
+---
+
 # Changelog
 
 All notable changes to ioFTPD are documented in this file.
