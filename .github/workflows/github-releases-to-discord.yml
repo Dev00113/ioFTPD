@@ -1,6 +1,11 @@
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      release_name:
+        description: 'Release name (e.g. v7.10.1)'
+        required: true
 
 jobs:
   github-releases-to-discord:
@@ -18,3 +23,4 @@ jobs:
           content: "||@everyone||"
           footer_title: "Changelog"
           reduce_headings: true
+          release_name: ${{ github.event.inputs.release_name }}
