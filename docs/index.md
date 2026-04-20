@@ -25,12 +25,21 @@ The goal is to preserve ioFTPD’s strengths while removing long‑standing Wind
 
 ## Latest Release
 
-**Version:** v7.10.0  
-**Release date:** 2026‑03‑03  
+**Version:** v7.10.1  
+**Release date:** 2026‑04‑20  
 **Download:**  
-https://github.com/Dev00113/ioFTPD/releases/tag/v7.10.0
+https://github.com/Dev00113/ioFTPD/releases/tag/v7.10.1
 
-This release introduces full long‑path support across all FTP operations, modern certificate options, and several important fixes.
+v7.10.1 adds stability fixes, expanded virtual address space, and build improvements on top of the long‑path foundation introduced in v7.10.0.
+
+### What's new in v7.10.1
+
+- **Crash fix** — `ExecuteAsync` no longer crashes with an access violation when running scheduler or Tcl-triggered events (non-FTP context)
+- **Crash fix** — Tcl panic no longer falls through to an INT3 breakpoint; a new panic handler logs to `ioFTPD_panic.log` and exits cleanly
+- **Stability** — NULL guards added to all UserFile and GroupFile Write callbacks, preventing crashes when files are accessed before first FTP login
+- **4 GB address space** — `LARGEADDRESSAWARE` enabled; 32-bit process can now use up to 4 GB of virtual address space on 64-bit Windows Server
+- **`SITE IOVERSION`** — fixed garbled output caused by incorrect `%hs` format specifier in the custom `FormatString` engine
+- **Git-stamped versioning** — every build embeds the git commit count and hash (e.g. `7.10.1.72-0ad5fdd`)
 
 ---
 
@@ -116,9 +125,9 @@ Unrecognized values fall back to RSA and log a warning.
 
 ---
 
-## Upgrading from v7.9.0
+## Upgrading
 
-No configuration changes are required.  
+No configuration changes are required for any upgrade from v7.9.0 or v7.10.0.  
 All new features are opt‑in via INI keys.  
 User and group file formats remain unchanged.
 

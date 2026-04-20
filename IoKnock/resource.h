@@ -2,6 +2,9 @@
 // Microsoft Visual C++ generated include file.
 // Used by IoKnock.rc
 //
+#ifndef IDC_STATIC
+#define IDC_STATIC (-1)
+#endif
 #define IDD_IOKNOCK_DIALOG              102
 #define IDP_SOCKETS_INIT_FAILED         103
 #define IDI_ICON1                       138

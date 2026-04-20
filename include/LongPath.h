@@ -41,6 +41,12 @@
 // FALSE = Long paths not available; internal guards enforce _MAX_PATH limits.
 extern BOOL g_LongPathsEnabled;
 
+// Set at startup by LongPath_Init() from [FTP] IO_Debug_Log in ioFTPD.ini.
+// When TRUE, Io* wrappers and directory-cache functions emit LOG_DEBUG messages
+// for every failed ANSI API call and every \\?\ retry outcome.  Default: FALSE.
+// Enable only for temporary diagnostics; the extra log output is verbose.
+extern BOOL g_bIoDebugLog;
+
 // Returns TRUE if dwErr is an NTFS path-length rejection for a path of length
 // cchPath.  Call this after the final W+\\?\ retry fails to decide whether to
 // normalise the error to ERROR_FILENAME_EXCED_RANGE so that FTP clients see

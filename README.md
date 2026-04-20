@@ -248,6 +248,22 @@ All configurations link against `tcl90.lib` and OpenSSL 3.x (`libssl.lib` / `lib
 3. Ensure OpenSSL DLLs (`libssl-3.dll` / `libcrypto-3.dll`) and the Tcl DLL (`tcl90.dll`) are in the `system\` output directory.
 4. Select the desired configuration and build.
 
+### Git-Stamped Version String
+
+Every build automatically embeds the current git state via a pre-build PowerShell script (`scripts/generate_version.ps1`). The resulting version string has the format:
+
+```
+7.10.1.72-0ad5fdd          (clean build)
+7.10.1.72-0ad5fdd-dirty    (uncommitted changes present)
+```
+
+The build number (e.g. `72`) is the monotonically increasing `git rev-list --count HEAD` value. The 7-character hash provides an exact source reference for crash reports. The version appears in the startup log, `SITE IOVERSION`, crash-log header, and `io version` Tcl command.
+
+> If `include/GitVersion.h` is missing (e.g. after a clean checkout), run the script once manually before building:
+> ```
+> powershell -NoProfile -ExecutionPolicy Bypass -File scripts\generate_version.ps1
+> ```
+
 ### Required Libraries in `system\`
 
 At runtime, `system\` must contain:
@@ -365,7 +381,7 @@ When `Auto`, ioFTPD probes the OS version and registry at startup and logs the r
 
 1. **OpenSSL upgraded to 3.6.1** (resolved — TLS 1.3, ECDHE, modern cipher suites; see OpenSSL.txt).
 2. **Tcl upgraded to 9.0.2** (resolved — official unmodified build; no source patches required).
-3. **32-bit only**. The build targets `MachineX86` exclusively, limiting address space to 4 GB and preventing use of modern mitigations.
+3. **32-bit only**. The build targets `MachineX86` exclusively. `LARGEADDRESSAWARE` is enabled so the process can use up to 4 GB of virtual address space on 64-bit Windows, but modern 64-bit mitigations (high-entropy ASLR, CFG) are unavailable until the codebase is ported to x64.
 4. **ASLR is explicitly disabled** (`RandomizedBaseAddress=false`) in all build configurations, making exploitation of memory-safety bugs trivial.
 5. **DEP/NX is explicitly disabled** (`DataExecutionPrevention` tag left empty) in all configurations.
 6. **Passwords hashed with SHA-1 (no salt)**. SHA-1 is broken for password storage; modern alternatives require bcrypt, scrypt, or Argon2.

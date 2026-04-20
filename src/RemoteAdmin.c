@@ -5291,8 +5291,8 @@ LPTSTR Admin_Version(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRING Ar
 	tszCommand  = GetStringIndexStatic(Args, 0);
 	lpBuffer	= &lpUser->CommandChannel.Out;
 
-	FormatString(lpBuffer, _TEXT("%sioFTPD version: %u-%u-%ur\r\n"), tszMultilinePrefix,
-		dwIoVersion[0], dwIoVersion[1], dwIoVersion[2]);
+	FormatString(lpBuffer, _TEXT("%sioFTPD version: %s\r\n"), tszMultilinePrefix,
+		tszIoVersionFull);
 	return NULL;
 }
 

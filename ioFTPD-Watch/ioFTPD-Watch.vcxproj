@@ -15,6 +15,7 @@
     <ProjectGuid>{1C446F1F-E3FD-42AD-A3B6-1E416847E9C0}</ProjectGuid>
     <RootNamespace>ioFTPDWatch</RootNamespace>
     <Keyword>Win32Proj</Keyword>
+    <VCToolsVersion>14.44.35207</VCToolsVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">

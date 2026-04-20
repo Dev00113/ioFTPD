@@ -19,6 +19,7 @@
     <ProjectGuid>{3BF34BC5-0173-4C11-8356-660182C98A77}</ProjectGuid>
     <RootNamespace>ioFTPDv6</RootNamespace>
     <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>
+    <VCToolsVersion>14.44.35207</VCToolsVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Purify|Win32'" Label="Configuration">
@@ -90,6 +91,7 @@
       <GenerateMapFile>true</GenerateMapFile>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <DataExecutionPrevention />
+      <LargeAddressAware>true</LargeAddressAware>
       <TargetMachine>MachineX86</TargetMachine>
     </Link>
   </ItemDefinitionGroup>
@@ -118,6 +120,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <DataExecutionPrevention />
+      <LargeAddressAware>true</LargeAddressAware>
+      <AdditionalOptions>/LARGEADDRESSAWARE %(AdditionalOptions)</AdditionalOptions>
       <TargetMachine>MachineX86</TargetMachine>
     </Link>
     <ManifestTool>
@@ -150,6 +154,7 @@
       <GenerateMapFile>true</GenerateMapFile>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <DataExecutionPrevention />
+      <LargeAddressAware>true</LargeAddressAware>
       <TargetMachine>MachineX86</TargetMachine>
       <ShowProgress>LinkVerbose</ShowProgress>
     </Link>
@@ -266,6 +271,7 @@
     <ClInclude Include="include\VirtualPath.h" />
     <ClInclude Include="include\Who.h" />
     <ClInclude Include="include\WinMessages.h" />
+    <ClInclude Include="include\GitVersion.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="Version.h" />
   </ItemGroup>
@@ -278,4 +284,10 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+
+  <!-- Generate include/GitVersion.h from git state before any C or RC compilation. -->
+  <Target Name="GenerateGitVersion" BeforeTargets="ClCompile;ResourceCompile">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)scripts\generate_version.ps1&quot; &quot;$(ProjectDir)&quot;" />
+  </Target>
+
 </Project>

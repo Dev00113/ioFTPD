@@ -316,10 +316,35 @@ static INT Group_StandardOpen(LPTSTR tszGroupName, LPGROUPFILE lpGroupFile)
 static BOOL Group_StandardWrite(LPGROUPFILE lpGroupFile)
 {
 	LPGROUPFILE_CONTEXT	lpContext;
+	GROUPFILE			GroupFile;
 	BUFFER				WriteBuffer;
 	DWORD				dwBytesWritten, dwError;
+	LPTSTR				tszFileName;
+	TCHAR				tpIdBuffer[16];
 
 	lpContext	= (LPGROUPFILE_CONTEXT)lpGroupFile->lpInternal;
+
+	//  If no file handle (e.g. group was just created via Group_Register and has
+	//  never been opened via FTP login), open the existing file now to obtain a
+	//  context.  Group_Register deliberately nulls lpInternal in the shared copy;
+	//  a Tcl script calling "groupfile open" / "groupfile unlock" before any
+	//  login would hit this path and crash without the guard below.
+	if (!lpContext)
+	{
+		wsprintf(tpIdBuffer, _TEXT("%i"), lpGroupFile->Gid);
+		if (!(tszFileName = Config_Get_Path(&IniConfigFile, _TEXT("Locations"), _TEXT("Group_Files"), tpIdBuffer, NULL)))
+			ERROR_RETURN(ERROR_NOT_ENOUGH_MEMORY, TRUE);
+		if (Group_StandardRead(tszFileName, &GroupFile, FALSE) != GM_SUCCESS)
+		{
+			Free(tszFileName);
+			return TRUE;
+		}
+		Free(tszFileName);
+		lpGroupFile->lpInternal = GroupFile.lpInternal;
+		GroupFile.lpInternal    = NULL;  /* ownership transferred — prevent future double-free */
+		lpContext = (LPGROUPFILE_CONTEXT)lpGroupFile->lpInternal;
+	}
+
 	//	Allocate write buffer
 	WriteBuffer.size	= 4096;
 	WriteBuffer.dwType	= 0;
@@ -398,7 +423,7 @@ Group_Default_Open(LPGROUPFILE lpGroupFile)
 BOOL
 Group_Default_Write(LPGROUPFILE lpGroupFile)
 {
-	LPUSERFILE_CONTEXT  lpContext;
+	LPGROUPFILE_CONTEXT  lpContext;
 	LPDATAROW    lpDataRow;
 	DWORD        dwDataRow, dwTemp;
 	CHAR         *pField, *pC;
@@ -407,7 +432,12 @@ Group_Default_Write(LPGROUPFILE lpGroupFile)
 	PINT32       p32;
 	BOOL         bPrint;
 
-	lpContext    = (LPUSERFILE_CONTEXT)lpGroupFile->lpInternal;
+	lpContext    = (LPGROUPFILE_CONTEXT)lpGroupFile->lpInternal;
+	if (!lpContext)
+	{
+		//  Default.Group file was never opened; nothing to write to.
+		return TRUE;
+	}
 	//  Allocate write buffer
 	WriteBuffer.size  = 4096;
 	WriteBuffer.dwType  = 0;

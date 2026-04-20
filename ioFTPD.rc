@@ -10,7 +10,7 @@
 //
 // Generated from the TEXTINCLUDE 2 resource.
 //
-#include "afxres.h"
+#include <winresrc.h>
 
 /////////////////////////////////////////////////////////////////////////////
 #undef APSTUDIO_READONLY_SYMBOLS
@@ -37,7 +37,7 @@ END
 
 2 TEXTINCLUDE 
 BEGIN
-    "#include ""afxres.h""\r\n"
+    "#include <winresrc.h>\r\n"
     "\0"
 END
 
@@ -82,11 +82,11 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "ioFTPD Server"
-            VALUE "FileVersion", IOFTPD_VERSION_STRING
+            VALUE "FileVersion", IOFTPD_VERSION_FULL
             VALUE "InternalName", "ioFTPD"
             VALUE "OriginalFilename", "ioFTPD.exe"
             VALUE "ProductName", "ioFTPD Server"
-            VALUE "ProductVersion", IOFTPD_VERSION_STRING
+            VALUE "ProductVersion", IOFTPD_VERSION_FULL
             VALUE "SpecialBuild", "Dev00113"
         END
     END

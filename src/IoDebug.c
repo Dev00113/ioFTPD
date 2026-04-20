@@ -1026,10 +1026,10 @@ UnhandledExceptionLogger(LPEXCEPTION_POINTERS lpExceptionInfo)
 
 	GetLocalTime(&SystemTime);
 	// format: Wed Jan 02 02:03:55 1980
-	iCrashPrintf(_T("%hs %hs %02u %02u:%02u:%02u %04u - ioFTPD v%u.%u.%u\r\nUnhandled exception: %s (0x%08X)\r\n"),
+	iCrashPrintf(_T("%hs %hs %02u %02u:%02u:%02u %04u - ioFTPD v%hs\r\nUnhandled exception: %s (0x%08X)\r\n"),
 		WeekDay3[SystemTime.wDayOfWeek], Months[SystemTime.wMonth], SystemTime.wDay,
 		SystemTime.wHour, SystemTime.wMinute, SystemTime.wSecond, SystemTime.wYear,
-		dwIoVersion[0], dwIoVersion[1], dwIoVersion[2],
+		tszIoVersionFull,
 		tszExceptionName, lpExceptionInfo->ExceptionRecord->ExceptionCode);
 
 

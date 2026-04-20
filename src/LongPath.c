@@ -1,9 +1,13 @@
 #include <ioFTPD.h>
 
 // ---------------------------------------------------------------------------
-// Global flag — set once during LongPath_Init, read throughout the codebase.
+// Global flags — set once during LongPath_Init, read throughout the codebase.
 // ---------------------------------------------------------------------------
 BOOL g_LongPathsEnabled = FALSE;
+BOOL g_bIoDebugLog      = FALSE;
+
+// Forward declaration — defined near the bottom of this file.
+static int IoBuildUNCPfx(LPCTSTR lpPath, SIZE_T cch, WCHAR *szOut, int cchOut);
 
 
 // ---------------------------------------------------------------------------
@@ -107,6 +111,16 @@ LongPath_Init(BOOL bFirstInitialization)
     }
 
     if (tszMode) Free(tszMode);
+
+    // [FTP] IO_Debug_Log — enable verbose LOG_DEBUG output from Io* wrappers
+    // and directory-cache functions.  Default: FALSE (off).  Set to True only
+    // for temporary diagnostics; the output is written to Debug.log on every
+    // failed ANSI call and every \\?\ retry attempt.
+    g_bIoDebugLog = FALSE;
+    Config_Get_Bool(&IniConfigFile, _T("FTP"), _T("IO_Debug_Log"), &g_bIoDebugLog);
+    if (g_bIoDebugLog)
+        Putlog(LOG_GENERAL, _T("IO_Debug_Log: enabled — verbose Io* wrapper diagnostics will be written to Debug.log.\r\n"));
+
     return TRUE;
 }
 
@@ -368,6 +382,125 @@ IoIsNtfsPathTooLongError(DWORD dwErr, SIZE_T cchPath)
 
 
 // ---------------------------------------------------------------------------
+// IoGetAttributesByParentScan — last-resort fallback for Win32 device-name
+// interception (ANSI ERROR_INVALID_HANDLE = 6).
+//
+// When the FINAL path component's stem matches a reserved Win32 device name
+// (CON, NUL, PRN, AUX, COM1-COM9, LPT1-LPT9), GetFileAttributesEx returns
+// ERROR_INVALID_HANDLE (6) and no \\?\ path form can bypass this when the
+// drive is a session-specific SMB mapping (e.g. R: → \\VMHOST00\SITE$).
+//
+// Key insight: FindFirstFile("parent\*") has "*" as its last component — a
+// wildcard, not a device name — so Win32 does NOT intercept it.  Win32 opens
+// the parent directory (normal name, no issue) and issues a QUERY_DIRECTORY
+// SMB operation, which the server handles at kernel level without device-name
+// filtering.  This succeeds even when a direct GetFileAttributesEx query for
+// the same path fails.
+//
+// The function enumerates "parent\*" and returns the WIN32_FILE_ATTRIBUTE_DATA
+// for the entry whose filename matches the last component of lpPath.
+// The parent path must not itself end in a device-named component (the caller
+// — the final component — is the device-named one).
+//
+// Returns TRUE on success (attributes populated); FALSE otherwise.
+// ---------------------------------------------------------------------------
+// IoPathHasDeviceNameStem — returns TRUE if any backslash/slash-separated
+// component of lpPath has a stem that matches a reserved Win32 device name
+// (CON, AUX, PRN, NUL, COM0-COM9, LPT0-LPT9).  Stem = the part before the
+// first '.' in the component.  Comparison is case-insensitive.
+// Used to decide whether to attempt a parent-scan fallback for ERROR_FILE_NOT_FOUND
+// (err=2) failures, which occur when GetFileAttributesEx cannot traverse an
+// intermediate path component that is a device name.
+static BOOL
+IoPathHasDeviceNameStem(LPCSTR lpPath)
+{
+    static const CHAR * const kDevNames[] = {
+        "CON","AUX","PRN","NUL",
+        "COM0","COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8","COM9",
+        "LPT0","LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9",
+        NULL
+    };
+    LPCSTR p = lpPath;
+    while (*p)
+    {
+        // Skip leading separators and drive-root (C:\, C:/)
+        if (*p == '\\' || *p == '/') { p++; continue; }
+        if (*(p + 1) == ':')         { p += 2; continue; }
+
+        // Find stem: characters up to the first '.', '\', '/', or end
+        LPCSTR pStem = p;
+        while (*p && *p != '.' && *p != '\\' && *p != '/') p++;
+        SIZE_T cchStem = (SIZE_T)(p - pStem);
+
+        // Compare stem against each device name
+        for (int i = 0; kDevNames[i]; i++)
+        {
+            SIZE_T cchDev = strlen(kDevNames[i]);
+            if (cchStem == cchDev && _strnicmp(pStem, kDevNames[i], cchDev) == 0)
+                return TRUE;
+        }
+
+        // Advance past the rest of this component
+        while (*p && *p != '\\' && *p != '/') p++;
+    }
+    return FALSE;
+}
+
+
+static BOOL
+IoGetAttributesByParentScan(LPCSTR lpPath, SIZE_T cch, WIN32_FILE_ATTRIBUTE_DATA *pInfo)
+{
+    CHAR             szPattern[_MAX_LONG_PATH + 3]; // parent + \* + NUL
+    WIN32_FIND_DATAA fd;
+    HANDLE           hFind;
+    LPCSTR           pLastSlash, pTarget;
+    SIZE_T           cchParent;
+    BOOL             bFound = FALSE;
+
+    // Locate last separator (backslash or forward slash) to split parent / filename.
+    // Forward slashes may appear in paths passed from VFS resolution (e.g. MDTM
+    // "R:/0DAY/0314/Con.Lehane...").  Win32 FindFirstFileA accepts mixed slashes.
+    pLastSlash = NULL;
+    for (SIZE_T i = 0; i < cch; i++)
+        if (lpPath[i] == '\\' || lpPath[i] == '/') pLastSlash = lpPath + i;
+
+    if (!pLastSlash || pLastSlash == lpPath)
+        return FALSE;   // root path or no parent component
+
+    cchParent = (SIZE_T)(pLastSlash - lpPath);
+    if (cchParent + 3 > _MAX_LONG_PATH)  // parent + \ + * + NUL
+        return FALSE;
+
+    // Build "parent\*"
+    memcpy(szPattern, lpPath, cchParent);
+    szPattern[cchParent]     = '\\';
+    szPattern[cchParent + 1] = '*';
+    szPattern[cchParent + 2] = '\0';
+
+    hFind = FindFirstFileA(szPattern, &fd);
+    if (hFind == INVALID_HANDLE_VALUE)
+        return FALSE;
+
+    pTarget = pLastSlash + 1;   // filename portion (after the backslash)
+    do {
+        if (_stricmp(fd.cFileName, pTarget) == 0)
+        {
+            pInfo->dwFileAttributes  = fd.dwFileAttributes;
+            pInfo->ftCreationTime    = fd.ftCreationTime;
+            pInfo->ftLastAccessTime  = fd.ftLastAccessTime;
+            pInfo->ftLastWriteTime   = fd.ftLastWriteTime;
+            pInfo->nFileSizeHigh     = fd.nFileSizeHigh;
+            pInfo->nFileSizeLow      = fd.nFileSizeLow;
+            bFound = TRUE;
+            break;
+        }
+    } while (FindNextFileA(hFind, &fd));
+
+    FindClose(hFind);
+    return bFound;
+}
+
+
 // IoGetFileAttributesEx — like GetFileAttributesEx but handles paths > MAX_PATH.
 //
 // WIN32_FILE_ATTRIBUTE_DATA contains no string fields; its layout is identical
@@ -385,6 +518,11 @@ IoIsNtfsPathTooLongError(DWORD dwErr, SIZE_T cchPath)
 //   ERROR_PATH_NOT_FOUND (3)    — parent component inaccessible via ANSI.
 //   ERROR_FILENAME_EXCED_RANGE (206) — classic MAX_PATH rejection.
 //   ERROR_INVALID_NAME (123)    — path form rejected by ANSI layer.
+//
+// Final fallback: when ANSI returns ERROR_INVALID_HANDLE (6) — Win32 device-name
+//   interception — and all \\?\ retries also fail, IoGetAttributesByParentScan
+//   enumerates the parent directory to find the entry by name.  This works
+//   because "parent\*" uses "*" as the last component (not a device name).
 //
 // Returns the same BOOL as GetFileAttributesEx; GetLastError() is preserved.
 // ---------------------------------------------------------------------------
@@ -412,13 +550,23 @@ IoGetFileAttributesEx(LPCTSTR lpPath, GET_FILEEX_INFO_LEVELS fInfoLevelId,
         if (bResult) return TRUE;
 
         dwErr = GetLastError();
-        // Retry with W + \\?\ for any error that may be a path-length rejection.
-        // ERROR_FILE_NOT_FOUND (2) is included because Windows Server 2019 can
-        // return it instead of ERROR_FILENAME_EXCED_RANGE for paths near MAX_PATH.
+        // Retry with W + \\?\ for any error that may be a path-length rejection
+        // or a Windows device-name interception.
+        // ERROR_FILE_NOT_FOUND (2): Windows Server 2019 returns this instead of
+        //   ERROR_FILENAME_EXCED_RANGE for paths near MAX_PATH.
+        // ERROR_DIRECTORY (267): Some Windows versions return this when the final
+        //   path component matches a reserved device name (CON, NUL, COM1, etc.)
+        //   via the ANSI API.  The \\?\ prefix bypasses device-name interception.
+        // ERROR_INVALID_HANDLE (6): Returned by some mapped network drives (e.g.
+        //   Windows Server 2019 SMB) when the ANSI layer intercepts a device-named
+        //   path component.  GetFileAttributesExA takes no handle, so this code
+        //   indicates Win32 redirection, not a caller bug.  Retry with \\?\.
         if (dwErr != ERROR_FILE_NOT_FOUND      &&
             dwErr != ERROR_PATH_NOT_FOUND      &&
             dwErr != ERROR_FILENAME_EXCED_RANGE &&
-            dwErr != ERROR_INVALID_NAME)
+            dwErr != ERROR_INVALID_NAME        &&
+            dwErr != ERROR_DIRECTORY           &&
+            dwErr != ERROR_INVALID_HANDLE)
         {
             SetLastError(dwErr);
             return FALSE;           // genuine error (e.g. access denied), no retry
@@ -474,15 +622,75 @@ IoGetFileAttributesEx(LPCTSTR lpPath, GET_FILEEX_INFO_LEVELS fInfoLevelId,
     bResult = GetFileAttributesExW(szWidePfx, fInfoLevelId, lpFileInfo);
     if (!bResult)
     {
-        dwErr = GetLastError();
-        if (IoIsNtfsPathTooLongError(dwErr, cch))
+        DWORD dwErrW = GetLastError();
+        BOOL  bUNCTried = FALSE;
+        // If \\?\X:\ returned FILE_NOT_FOUND the drive may be a session-specific
+        // mapped network drive not visible in the \\?\ (NT object) namespace.
+        // Resolve via QueryDosDevice to build \\?\UNC\server\share\... and retry.
+        // If \\?\UNC\ also fails, retry again with a plain UNC path \\server\share\...
+        // Plain UNC paths route through the MUP without Win32 device-name filtering,
+        // so they reach the server even when the final component's stem is a
+        // reserved device name (CON, NUL, COM1, LPT1, etc.).
+        if (dwErrW == ERROR_FILE_NOT_FOUND)
         {
+            WCHAR szUNCPfx[_MAX_LONG_PATH + 9];
+            if (IoBuildUNCPfx(lpPath, cch, szUNCPfx, _countof(szUNCPfx)))
+            {
+                bUNCTried = TRUE;
+                bResult = GetFileAttributesExW(szUNCPfx, fInfoLevelId, lpFileInfo);
+                if (bResult) return TRUE;
+                dwErrW = GetLastError();
+                if (dwErrW == ERROR_FILE_NOT_FOUND)
+                {
+                    // Retry 3: plain UNC \\server\share\path.
+                    // szUNCPfx is \\?\UNC\server\share\path.
+                    // Setting [6]='\\' [7]='\\' makes szUNCPfx+6 = \\server\share\path.
+                    szUNCPfx[6] = L'\\'; szUNCPfx[7] = L'\\';
+                    bResult = GetFileAttributesExW(szUNCPfx + 6, fInfoLevelId, lpFileInfo);
+                    if (bResult) return TRUE;
+                    dwErrW = GetLastError();
+                }
+            }
+        }
+        if (g_bIoDebugLog)
+            Putlog(LOG_DEBUG,
+                _T("IoGetFileAttributesEx: ANSI err=%u, W-retry err=%u, UNC=%d, path='%s'\r\n"),
+                dwErr, dwErrW, (int)bUNCTried, lpPath);
+
+        // Final fallback: parent-directory scan for Win32 device-name interception.
+        //
+        // Two cases where this applies:
+        //
+        // Case A — ANSI ERROR_INVALID_HANDLE (6): the FINAL component's stem is a
+        //   device name (e.g. "Con.Foo", "NUL.bar").  Win32 intercepts the path
+        //   before it reaches the SMB driver.  All \\?\ forms also fail for
+        //   session-specific drives.  Solution: enumerate "parent\*" (wildcard last
+        //   component, not a device name) and match by filename.
+        //
+        // Case B — ERROR_FILE_NOT_FOUND (2) with a device-name stem anywhere in the
+        //   path: the FINAL component is normal but it resides inside (or below) a
+        //   directory whose stem is a device name.  SMB QueryInfo cannot traverse the
+        //   device-named intermediate directory.  Same solution: enumerate
+        //   "parent\*" — Win32 opens the parent (device-named directory) via an
+        //   NtOpenFile kernel call that does not apply device-name filtering, so the
+        //   SMB QUERY_DIRECTORY operation succeeds.
+        //
+        // IoGetAttributesByParentScan handles both backslash and forward-slash paths.
+        if ((dwErr == ERROR_INVALID_HANDLE ||
+             (dwErrW == ERROR_FILE_NOT_FOUND && IoPathHasDeviceNameStem(lpPath))) &&
+            IoGetAttributesByParentScan(lpPath, cch, (WIN32_FILE_ATTRIBUTE_DATA *)lpFileInfo))
+        {
+            if (g_bIoDebugLog)
+                Putlog(LOG_DEBUG,
+                    _T("IoGetFileAttributesEx: parent-scan fallback succeeded for '%s'\r\n"),
+                    lpPath);
+            return TRUE;
+        }
+
+        if (IoIsNtfsPathTooLongError(dwErrW, cch))
             SetLastError(ERROR_FILENAME_EXCED_RANGE);
-        }
         else
-        {
-            SetLastError(dwErr);
-        }
+            SetLastError(dwErrW);
     }
     return bResult;
 }
@@ -559,10 +767,18 @@ IoCreateDirectory(LPCTSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecAttr)
     }
 
     dwErr = GetLastError();
-    // Only retry for errors that indicate a path-length rejection.
-    if (dwErr != ERROR_PATH_NOT_FOUND &&
+    // Retry with \\?\ for path-length rejections and Windows device-name
+    // interception.  ERROR_DIRECTORY (267) is returned by some Windows versions
+    // when CreateDirectory is called with a final component that matches a
+    // reserved device name (CON, NUL, COM1, LPT1, etc.) via the ANSI API.
+    // ERROR_INVALID_HANDLE (6): returned by some mapped network drives (e.g.
+    //   Windows Server 2019 SMB) for device-named path components.
+    // The \\?\ prefix bypasses both interception behaviours.
+    if (dwErr != ERROR_PATH_NOT_FOUND      &&
         dwErr != ERROR_FILENAME_EXCED_RANGE &&
-        dwErr != ERROR_INVALID_NAME)
+        dwErr != ERROR_INVALID_NAME        &&
+        dwErr != ERROR_DIRECTORY           &&
+        dwErr != ERROR_INVALID_HANDLE)
     {
         return FALSE;   // GetLastError() already set to dwErr
     }
@@ -611,7 +827,28 @@ IoCreateDirectory(LPCTSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecAttr)
         return FALSE;
     }
 
-    return CreateDirectoryW(szWidePfx, lpSecAttr);
+    if (CreateDirectoryW(szWidePfx, lpSecAttr))
+        return TRUE;
+    dwErr = GetLastError();
+    if (dwErr == ERROR_FILE_NOT_FOUND || dwErr == ERROR_PATH_NOT_FOUND)
+    {
+        WCHAR szUNCPfx[_MAX_LONG_PATH + 9];
+        SIZE_T cch = _tcslen(lpPathName);
+        if (IoBuildUNCPfx(lpPathName, cch, szUNCPfx, _countof(szUNCPfx)))
+        {
+            if (CreateDirectoryW(szUNCPfx, lpSecAttr)) return TRUE;
+            dwErr = GetLastError();
+            if (dwErr == ERROR_FILE_NOT_FOUND || dwErr == ERROR_PATH_NOT_FOUND)
+            {
+                // Plain UNC retry (see IoGetFileAttributesEx for the trick explanation).
+                szUNCPfx[6] = L'\\'; szUNCPfx[7] = L'\\';
+                if (CreateDirectoryW(szUNCPfx + 6, lpSecAttr)) return TRUE;
+                dwErr = GetLastError();
+            }
+        }
+    }
+    SetLastError(dwErr);
+    return FALSE;
 }
 
 
@@ -718,11 +955,23 @@ IoWin32FindFirstFile(LPCSTR lpPath, LPWIN32_FIND_DATAA pFindDataA)
         else
         {
             dwErr = GetLastError();
-            // Only retry via W for path-length errors; a genuine "not found"
-            // or access error should be returned to the caller as-is.
+            // Retry via W for path-length errors and device-name interception.
+            // ERROR_DIRECTORY (267): local drives — ANSI intercepts a reserved
+            //   device name (CON, NUL, COM1…) in a path component.
+            // ERROR_FILE_NOT_FOUND (2): network-mapped drives — some Windows
+            //   versions return FILE_NOT_FOUND instead of ERROR_DIRECTORY when
+            //   the ANSI layer intercepts a device-named component in a UNC or
+            //   mapped-drive path. Retry with \\?\ to bypass interception.
+            // ERROR_INVALID_HANDLE (6): returned by some mapped network drives
+            //   (e.g. Windows Server 2019 SMB) for device-named path components.
+            //   FindFirstFileA takes no handle; this is Win32 redirection.
+            // A genuine access error or unexpected failure is returned as-is.
             if (dwErr != ERROR_PATH_NOT_FOUND      &&
                 dwErr != ERROR_FILENAME_EXCED_RANGE &&
-                dwErr != ERROR_INVALID_NAME)
+                dwErr != ERROR_INVALID_NAME        &&
+                dwErr != ERROR_DIRECTORY           &&
+                dwErr != ERROR_FILE_NOT_FOUND      &&
+                dwErr != ERROR_INVALID_HANDLE)
             {
                 return INVALID_HANDLE_VALUE;    // GetLastError() = dwErr
             }
@@ -778,7 +1027,52 @@ IoWin32FindFirstFile(LPCSTR lpPath, LPWIN32_FIND_DATAA pFindDataA)
     ZeroMemory(&wFindData, sizeof(wFindData));
     hFind = FindFirstFileW(szWidePfx, &wFindData);
     if (hFind != INVALID_HANDLE_VALUE)
+    {
         Io_ConvertFindDataW(&wFindData, pFindDataA);
+    }
+    else
+    {
+        DWORD dwErrW = GetLastError();
+        BOOL  bUNCTried = FALSE;
+        // If \\?\X:\ returned FILE_NOT_FOUND the drive may be a session-specific
+        // mapped network drive.  Resolve via QueryDosDevice and retry as \\?\UNC\.
+        // If that also fails, retry with a plain UNC path \\server\share\... which
+        // bypasses Win32 device-name filtering entirely.
+        if (dwErrW == ERROR_FILE_NOT_FOUND)
+        {
+            WCHAR szUNCPfx[_MAX_LONG_PATH + 9];
+            if (IoBuildUNCPfx(lpPath, cch, szUNCPfx, _countof(szUNCPfx)))
+            {
+                bUNCTried = TRUE;
+                ZeroMemory(&wFindData, sizeof(wFindData));
+                hFind = FindFirstFileW(szUNCPfx, &wFindData);
+                if (hFind != INVALID_HANDLE_VALUE)
+                {
+                    Io_ConvertFindDataW(&wFindData, pFindDataA);
+                    return hFind;
+                }
+                dwErrW = GetLastError();
+                if (dwErrW == ERROR_FILE_NOT_FOUND)
+                {
+                    // Plain UNC retry.
+                    szUNCPfx[6] = L'\\'; szUNCPfx[7] = L'\\';
+                    ZeroMemory(&wFindData, sizeof(wFindData));
+                    hFind = FindFirstFileW(szUNCPfx + 6, &wFindData);
+                    if (hFind != INVALID_HANDLE_VALUE)
+                    {
+                        Io_ConvertFindDataW(&wFindData, pFindDataA);
+                        return hFind;
+                    }
+                    dwErrW = GetLastError();
+                }
+            }
+        }
+        if (g_bIoDebugLog)
+            Putlog(LOG_DEBUG,
+                _T("IoWin32FindFirstFile: ANSI err=%u, W-retry err=%u, UNC=%d, path='%s'\r\n"),
+                dwErr, dwErrW, (int)bUNCTried, lpPath);
+        SetLastError(dwErrW);
+    }
 
     return hFind;
 }
@@ -831,10 +1125,18 @@ IoCreateFile(LPCTSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
     }
 
     dwErr = GetLastError();
-    // Only retry for errors that indicate a path-length rejection.
-    if (dwErr != ERROR_PATH_NOT_FOUND &&
+    // Retry for path-length rejections and Win32 device-name interception.
+    // ERROR_DIRECTORY (267): Some Windows versions return this when CreateFile
+    //   is called with a path whose component matches a reserved device name
+    //   (CON, NUL, COM1, etc.) via the ANSI API. The \\?\ prefix bypasses it.
+    // ERROR_INVALID_HANDLE (6): returned by some mapped network drives (e.g.
+    //   Windows Server 2019 SMB) for device-named path components. CreateFile
+    //   takes no handle at this point; this is Win32 redirection, not a bug.
+    if (dwErr != ERROR_PATH_NOT_FOUND      &&
         dwErr != ERROR_FILENAME_EXCED_RANGE &&
-        dwErr != ERROR_INVALID_NAME)
+        dwErr != ERROR_INVALID_NAME        &&
+        dwErr != ERROR_DIRECTORY           &&
+        dwErr != ERROR_INVALID_HANDLE)
     {
         SetLastError(dwErr);
         return INVALID_HANDLE_VALUE;
@@ -886,6 +1188,28 @@ IoCreateFile(LPCTSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
     if (hFile == INVALID_HANDLE_VALUE)
     {
         dwErr = GetLastError();
+        if (dwErr == ERROR_FILE_NOT_FOUND || dwErr == ERROR_PATH_NOT_FOUND)
+        {
+            WCHAR szUNCPfx[_MAX_LONG_PATH + 9];
+            if (IoBuildUNCPfx(lpFileName, cch, szUNCPfx, _countof(szUNCPfx)))
+            {
+                hFile = CreateFileW(szUNCPfx, dwDesiredAccess, dwShareMode,
+                                    lpSecurityAttributes, dwCreationDisposition,
+                                    dwFlagsAndAttributes, hTemplateFile);
+                if (hFile != INVALID_HANDLE_VALUE) return hFile;
+                dwErr = GetLastError();
+                if (dwErr == ERROR_FILE_NOT_FOUND || dwErr == ERROR_PATH_NOT_FOUND)
+                {
+                    // Plain UNC retry.
+                    szUNCPfx[6] = L'\\'; szUNCPfx[7] = L'\\';
+                    hFile = CreateFileW(szUNCPfx + 6, dwDesiredAccess, dwShareMode,
+                                        lpSecurityAttributes, dwCreationDisposition,
+                                        dwFlagsAndAttributes, hTemplateFile);
+                    if (hFile != INVALID_HANDLE_VALUE) return hFile;
+                    dwErr = GetLastError();
+                }
+            }
+        }
         SetLastError(IoIsNtfsPathTooLongError(dwErr, cch)
                      ? ERROR_FILENAME_EXCED_RANGE : dwErr);
     }
@@ -922,10 +1246,14 @@ IoMoveFileEx(LPCTSTR lpExistingFileName, LPCTSTR lpNewFileName, DWORD dwFlags)
     }
 
     dwErr = GetLastError();
-    // Only retry for path-length related errors.
-    if (dwErr != ERROR_PATH_NOT_FOUND &&
+    // Retry for path-length rejections and Win32 device-name interception.
+    // ERROR_DIRECTORY (267): ANSI layer intercepts a device-named final component.
+    // ERROR_INVALID_HANDLE (6): some mapped network drives return this instead.
+    if (dwErr != ERROR_PATH_NOT_FOUND      &&
         dwErr != ERROR_FILENAME_EXCED_RANGE &&
-        dwErr != ERROR_INVALID_NAME)
+        dwErr != ERROR_INVALID_NAME        &&
+        dwErr != ERROR_DIRECTORY           &&
+        dwErr != ERROR_INVALID_HANDLE)
     {
         SetLastError(dwErr);
         return FALSE;
@@ -990,18 +1318,33 @@ IoMoveFileEx(LPCTSTR lpExistingFileName, LPCTSTR lpNewFileName, DWORD dwFlags)
     }
 
     if (MoveFileExW(szWideSrc, szWideDst, dwFlags))
-    {
         return TRUE;
-    }
     dwErr = GetLastError();
+    if (dwErr == ERROR_FILE_NOT_FOUND || dwErr == ERROR_PATH_NOT_FOUND)
+    {
+        WCHAR szUNCSrc[_MAX_LONG_PATH + 9];
+        WCHAR szUNCDst[_MAX_LONG_PATH + 9];
+        SIZE_T cchSrc = _tcslen(lpExistingFileName);
+        SIZE_T cchDst = _tcslen(lpNewFileName);
+        if (IoBuildUNCPfx(lpExistingFileName, cchSrc, szUNCSrc, _countof(szUNCSrc)) &&
+            IoBuildUNCPfx(lpNewFileName,       cchDst, szUNCDst, _countof(szUNCDst)))
+        {
+            if (MoveFileExW(szUNCSrc, szUNCDst, dwFlags)) return TRUE;
+            dwErr = GetLastError();
+            if (dwErr == ERROR_FILE_NOT_FOUND || dwErr == ERROR_PATH_NOT_FOUND)
+            {
+                // Plain UNC retry for both src and dst.
+                szUNCSrc[6] = L'\\'; szUNCSrc[7] = L'\\';
+                szUNCDst[6] = L'\\'; szUNCDst[7] = L'\\';
+                if (MoveFileExW(szUNCSrc + 6, szUNCDst + 6, dwFlags)) return TRUE;
+                dwErr = GetLastError();
+            }
+        }
+    }
     if (IoIsNtfsPathTooLongError(dwErr, _tcslen(lpExistingFileName)))
-    {
         SetLastError(ERROR_FILENAME_EXCED_RANGE);
-    }
     else
-    {
         SetLastError(dwErr);
-    }
     return FALSE;
 }
 
@@ -1083,6 +1426,127 @@ IoBuildWidePfx(LPCTSTR lpPath, SIZE_T cch, WCHAR *szOut, int cchOut)
 
 
 // ---------------------------------------------------------------------------
+// IoBuildUNCPfx — resolve a drive-letter path to \\?\UNC\server\share\...
+//
+// When \\?\X:\ fails with ERROR_FILE_NOT_FOUND for a mapped network drive,
+// the drive letter exists only in the session-specific DOS device namespace
+// (\Sessions\N\DosDevices\X:) and is invisible to the NT object namespace
+// (\GLOBAL??\) used by \\?\.  QueryDosDeviceW resolves the drive through the
+// current process's namespace, giving the true device path from which we
+// extract the UNC server\share and build \\?\UNC\server\share\rest\of\path.
+//
+// QueryDosDeviceW output format for a mapped network drive:
+//   \Device\LanmanRedirector\;R:00000000000d8ae9\server\share
+//                              ^^^^^^^^^^^^^^^^^^
+//                              skip this tag to reach \server\share
+//
+// Local drives (e.g. \Device\HarddiskVolume3) have no ';' and return 0.
+//
+// Returns number of wide chars written to szOut (including NUL), or 0 on
+// failure.  szOut must be at least _MAX_LONG_PATH + 9 wide chars.
+// ---------------------------------------------------------------------------
+static int
+IoBuildUNCPfx(LPCTSTR lpPath, SIZE_T cch, WCHAR *szOut, int cchOut)
+{
+    // 1024 chars: larger than MAX_PATH+1 to handle long SMB device strings.
+    WCHAR  szDevice[1024];
+    WCHAR  szDrive[3];
+    WCHAR *pSemi, *pSlash;
+    int    cchShare, cchRest;
+
+    if (cch < 2 || lpPath[1] != _T(':'))
+        return 0;   // not a drive-letter path
+
+    szDrive[0] = (WCHAR)(unsigned char)lpPath[0];
+    szDrive[1] = L':';
+    szDrive[2] = L'\0';
+
+    if (!QueryDosDeviceW(szDrive, szDevice, _countof(szDevice)))
+    {
+        if (g_bIoDebugLog)
+            Putlog(LOG_DEBUG,
+                _T("IoBuildUNCPfx: QueryDosDeviceW('%c:') failed err=%u\r\n"),
+                lpPath[0], GetLastError());
+        return 0;
+    }
+
+    if (g_bIoDebugLog)
+        Putlog(LOG_DEBUG,
+            _T("IoBuildUNCPfx: QueryDosDeviceW('%c:') = '%S'\r\n"),
+            lpPath[0], szDevice);
+
+    // A ';' in the device name indicates a network redirector entry.
+    // Device path format examples:
+    //   \Device\LanmanRedirector\;R:SESSIONID\server\share
+    //   \Device\Mup\;LanmanRedirector\;R:SESSIONID\server\share
+    // Use wcsrchr (last ';') so that both single- and double-semicolon
+    // formats resolve to the correct ;X:SESSIONID\server\share segment.
+    pSemi = wcsrchr(szDevice, L';');
+    if (!pSemi)
+    {
+        if (g_bIoDebugLog)
+            Putlog(LOG_DEBUG,
+                _T("IoBuildUNCPfx: no ';' in device string for '%c:' — local drive, skipping\r\n"),
+                lpPath[0]);
+        return 0;   // local drive, no UNC equivalent
+    }
+
+    pSlash = wcschr(pSemi, L'\\');
+    if (!pSlash)
+    {
+        if (g_bIoDebugLog)
+            Putlog(LOG_DEBUG,
+                _T("IoBuildUNCPfx: no '\\' after ';' in device string for '%c:'\r\n"),
+                lpPath[0]);
+        return 0;
+    }
+
+    pSlash++;                       // skip leading '\' -> "server\share"
+    cchShare = (int)wcslen(pSlash);
+
+    // Need: 8 (\\?\UNC\) + cchShare + 1 (\) + rest + NUL
+    if (cchOut < 8 + cchShare + 2)
+    {
+        if (g_bIoDebugLog)
+            Putlog(LOG_DEBUG,
+                _T("IoBuildUNCPfx: output buffer too small (%d) for '%c:'\r\n"),
+                cchOut, lpPath[0]);
+        return 0;
+    }
+
+    szOut[0] = L'\\'; szOut[1] = L'\\';
+    szOut[2] = L'?';  szOut[3] = L'\\';
+    szOut[4] = L'U';  szOut[5] = L'N';
+    szOut[6] = L'C';  szOut[7] = L'\\';
+    wcscpy(szOut + 8, pSlash);      // append "server\share"
+
+    if (cch > 3)
+    {
+        // Append '\' + rest of path (after "X:\")
+        szOut[8 + cchShare] = L'\\';
+        cchRest = MultiByteToWideChar(CP_ACP, 0,
+                      lpPath + 3, -1,
+                      szOut + 8 + cchShare + 1,
+                      cchOut - 8 - cchShare - 1);
+        if (!cchRest)
+        {
+            if (g_bIoDebugLog)
+                Putlog(LOG_DEBUG,
+                    _T("IoBuildUNCPfx: MultiByteToWideChar failed for '%s'\r\n"), lpPath);
+            return 0;
+        }
+        if (g_bIoDebugLog)
+            Putlog(LOG_DEBUG, _T("IoBuildUNCPfx: built '\\\\?\\UNC\\%S'\r\n"), szOut + 8);
+        return 8 + cchShare + 1 + cchRest;
+    }
+    szOut[8 + cchShare] = L'\0';
+    if (g_bIoDebugLog)
+        Putlog(LOG_DEBUG, _T("IoBuildUNCPfx: built '\\\\?\\UNC\\%S'\r\n"), szOut + 8);
+    return 8 + cchShare + 1;
+}
+
+
+// ---------------------------------------------------------------------------
 // IoDeleteFileEx — like DeleteFile but handles paths > MAX_PATH.
 //
 // Strategy: try DeleteFileA first; on path-length errors (or err=2 which
@@ -1119,11 +1583,15 @@ IoDeleteFileEx(LPCTSTR lpPath)
     }
 
     dwErr = GetLastError();
-    // Only retry for errors that may indicate a path-length rejection.
+    // Retry for path-length rejections and Win32 device-name interception.
+    // ERROR_DIRECTORY (267): ANSI layer intercepts a device-named path component.
+    // ERROR_INVALID_HANDLE (6): some mapped network drives return this instead.
     if (dwErr != ERROR_FILE_NOT_FOUND      &&
         dwErr != ERROR_PATH_NOT_FOUND      &&
         dwErr != ERROR_FILENAME_EXCED_RANGE &&
-        dwErr != ERROR_INVALID_NAME)
+        dwErr != ERROR_INVALID_NAME        &&
+        dwErr != ERROR_DIRECTORY           &&
+        dwErr != ERROR_INVALID_HANDLE)
     {
         SetLastError(dwErr);
         return FALSE;
@@ -1138,18 +1606,27 @@ IoDeleteFileEx(LPCTSTR lpPath)
     }
 
     if (DeleteFileW(szWidePfx))
-    {
         return TRUE;
-    }
     dwErr = GetLastError();
+    if (dwErr == ERROR_FILE_NOT_FOUND || dwErr == ERROR_PATH_NOT_FOUND)
+    {
+        WCHAR szUNCPfx[_MAX_LONG_PATH + 9];
+        if (IoBuildUNCPfx(lpPath, cch, szUNCPfx, _countof(szUNCPfx)))
+        {
+            if (DeleteFileW(szUNCPfx)) return TRUE;
+            dwErr = GetLastError();
+            if (dwErr == ERROR_FILE_NOT_FOUND || dwErr == ERROR_PATH_NOT_FOUND)
+            {
+                szUNCPfx[6] = L'\\'; szUNCPfx[7] = L'\\';
+                if (DeleteFileW(szUNCPfx + 6)) return TRUE;
+                dwErr = GetLastError();
+            }
+        }
+    }
     if (IoIsNtfsPathTooLongError(dwErr, cch))
-    {
         SetLastError(ERROR_FILENAME_EXCED_RANGE);
-    }
     else
-    {
         SetLastError(dwErr);
-    }
     return FALSE;
 }
 
@@ -1199,11 +1676,15 @@ IoRemoveDirectoryEx(LPCTSTR lpPath)
         }
 
         dwErr = GetLastError();
-        // Only retry for errors that may indicate a path-length rejection.
+        // Retry for path-length rejections and Win32 device-name interception.
+        // ERROR_DIRECTORY (267): ANSI layer intercepts a device-named final component.
+        // ERROR_INVALID_HANDLE (6): some mapped network drives return this instead.
         if (dwErr != ERROR_FILE_NOT_FOUND      &&
             dwErr != ERROR_PATH_NOT_FOUND      &&
             dwErr != ERROR_FILENAME_EXCED_RANGE &&
-            dwErr != ERROR_INVALID_NAME)
+            dwErr != ERROR_INVALID_NAME        &&
+            dwErr != ERROR_DIRECTORY           &&
+            dwErr != ERROR_INVALID_HANDLE)
         {
             SetLastError(dwErr);
             return FALSE;
@@ -1224,18 +1705,27 @@ IoRemoveDirectoryEx(LPCTSTR lpPath)
     }
 
     if (RemoveDirectoryW(szWidePfx))
-    {
         return TRUE;
-    }
     dwErr = GetLastError();
+    if (dwErr == ERROR_FILE_NOT_FOUND || dwErr == ERROR_PATH_NOT_FOUND)
+    {
+        WCHAR szUNCPfx[_MAX_LONG_PATH + 9];
+        if (IoBuildUNCPfx(lpPath, cch, szUNCPfx, _countof(szUNCPfx)))
+        {
+            if (RemoveDirectoryW(szUNCPfx)) return TRUE;
+            dwErr = GetLastError();
+            if (dwErr == ERROR_FILE_NOT_FOUND || dwErr == ERROR_PATH_NOT_FOUND)
+            {
+                szUNCPfx[6] = L'\\'; szUNCPfx[7] = L'\\';
+                if (RemoveDirectoryW(szUNCPfx + 6)) return TRUE;
+                dwErr = GetLastError();
+            }
+        }
+    }
     if (IoIsNtfsPathTooLongError(dwErr, cch))
-    {
         SetLastError(ERROR_FILENAME_EXCED_RANGE);
-    }
     else
-    {
         SetLastError(dwErr);
-    }
     return FALSE;
 }
 
@@ -1286,11 +1776,15 @@ IoOpenReparsePointForDelete(LPCTSTR lpPath, HANDLE *phFile)
     }
 
     dwErr = GetLastError();
-    // Only retry for errors that may indicate a path-length rejection.
+    // Retry for path-length rejections and Win32 device-name interception.
+    // ERROR_DIRECTORY (267): ANSI layer intercepts a device-named path component.
+    // ERROR_INVALID_HANDLE (6): some mapped network drives return this instead.
     if (dwErr != ERROR_FILE_NOT_FOUND      &&
         dwErr != ERROR_PATH_NOT_FOUND      &&
         dwErr != ERROR_FILENAME_EXCED_RANGE &&
-        dwErr != ERROR_INVALID_NAME)
+        dwErr != ERROR_INVALID_NAME        &&
+        dwErr != ERROR_DIRECTORY           &&
+        dwErr != ERROR_INVALID_HANDLE)
     {
         SetLastError(dwErr);
         return FALSE;
@@ -1317,13 +1811,46 @@ IoOpenReparsePointForDelete(LPCTSTR lpPath, HANDLE *phFile)
         return TRUE;
     }
     dwErr = GetLastError();
+    if (dwErr == ERROR_FILE_NOT_FOUND || dwErr == ERROR_PATH_NOT_FOUND)
+    {
+        WCHAR szUNCPfx[_MAX_LONG_PATH + 9];
+        if (IoBuildUNCPfx(lpPath, cch, szUNCPfx, _countof(szUNCPfx)))
+        {
+            hFile = CreateFileW(szUNCPfx,
+                                GENERIC_READ | GENERIC_WRITE,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                NULL,
+                                OPEN_EXISTING,
+                                FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
+                                NULL);
+            if (hFile != INVALID_HANDLE_VALUE)
+            {
+                *phFile = hFile;
+                return TRUE;
+            }
+            dwErr = GetLastError();
+            if (dwErr == ERROR_FILE_NOT_FOUND || dwErr == ERROR_PATH_NOT_FOUND)
+            {
+                szUNCPfx[6] = L'\\'; szUNCPfx[7] = L'\\';
+                hFile = CreateFileW(szUNCPfx + 6,
+                                    GENERIC_READ | GENERIC_WRITE,
+                                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                    NULL,
+                                    OPEN_EXISTING,
+                                    FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS,
+                                    NULL);
+                if (hFile != INVALID_HANDLE_VALUE)
+                {
+                    *phFile = hFile;
+                    return TRUE;
+                }
+                dwErr = GetLastError();
+            }
+        }
+    }
     if (IoIsNtfsPathTooLongError(dwErr, cch))
-    {
         SetLastError(ERROR_FILENAME_EXCED_RANGE);
-    }
     else
-    {
         SetLastError(dwErr);
-    }
     return FALSE;
 }
