@@ -1,3 +1,45 @@
+v7.10.1 Release Notes:
+
+1) Files in \System:
+   Changed : ioFTPD.[exe,pdb] - Version 7.10.1.0
+
+2) 4 GB virtual address space.  ioFTPD is now built with LARGEADDRESSAWARE,
+   allowing the 32-bit process to address up to ~3.8 GB of virtual memory on
+   64-bit Windows (previously limited to 2 GB).  This prevents out-of-memory
+   crashes on busy servers running large TCL scripts.
+
+3) Git-stamped version string.  Every build now embeds the git commit count
+   and short hash in the version string, e.g. 7.10.1.72-0ad5fdd.  Visible in
+   the startup log, SITE IOVERSION, and crash log headers.  Builds from a zip
+   download fall back to 7.10.1.0-unknown.
+
+
+*** Bug Fixes
+
+4) Fixed crash when a TCL bot calls "userfile unlock" before the user has ever
+   logged in.  User_StandardWrite (and all other UserFile/GroupFile Write
+   callbacks) dereferenced lpInternal without a NULL check; lpInternal is
+   intentionally NULL in the shared copy until the first FTP login opens the
+   file handle.  All Write callbacks now open the file on demand when
+   lpInternal is NULL, matching the recovery pattern in User_Default_Write.
+
+5) Fixed access violation in ExecuteAsync when triggered by a scheduler or
+   TCL event outside an FTP session.  The cleanup path called LockClient with
+   dwCID = -1 (no client), which indexed lpClientArray[-1] and crashed.
+   LockClient/UnlockClient are now skipped when dwCID is -1.
+
+6) Fixed TCL panic falling through to an INT3 breakpoint.  The custom panic
+   handler (IoFTPD_TclPanicProc) now writes a ioFTPD_panic.log entry and
+   calls ExitProcess(1) instead of returning, preventing the crash from
+   landing on compiler-inserted INT3 padding bytes.
+
+7) Fixed SITE IOVERSION reporting garbled output (e.g. &#11831;&#12337;...).
+   The format string used %hs to print the version string through the custom
+   FormatString engine; the 'h' modifier activates URL-encoding mode in that
+   engine rather than selecting a narrow string.  Changed to %s.
+
+
+-------------------------------------------------------------------------------
 v7.10.0 Release Notes:
 
 1) Files in \System:
