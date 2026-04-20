@@ -14,6 +14,7 @@
     <VCProjectVersion>17.0</VCProjectVersion>
     <ProjectGuid>{8AD88D3E-CF7B-43A5-8525-F9468F28A187}</ProjectGuid>
     <RootNamespace>VersionAppend</RootNamespace>
+    <VCToolsVersion>14.44.35207</VCToolsVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">

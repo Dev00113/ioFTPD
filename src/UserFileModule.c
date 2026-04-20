@@ -223,7 +223,7 @@ static INT32 User_StandardCreate(LPTSTR tszUserName, INT32 Gid)
 	  // above when building the template path, so _MAX_LONG_PATH - iLen > 11.
 	  _stprintf_s(tpOffset, _MAX_LONG_PATH - iLen, _T("%i"), iReturn);
 	  //  Move file
-	  if (! MoveFileEx(tszTargetFile, tszSourceFile, MOVEFILE_REPLACE_EXISTING))
+	  if (! IoMoveFileEx(tszTargetFile, tszSourceFile, MOVEFILE_REPLACE_EXISTING))
 	  {
 		  dwError  = GetLastError();
 		  //  Unregister user
@@ -331,7 +331,7 @@ static INT User_StandardRead(LPTSTR tszFileName, LPUSERFILE lpUserFile, BOOL bCr
   if (! (lpContext = (LPUSERFILE_CONTEXT)Allocate(NULL, sizeof(USERFILE_CONTEXT)))) ERROR_RETURN(ERROR_NOT_ENOUGH_MEMORY, UM_FATAL);
 
   //  Open userfile
-  lpContext->hFileHandle  = CreateFile(tszFileName, GENERIC_READ|GENERIC_WRITE,
+  lpContext->hFileHandle  = IoCreateFile(tszFileName, GENERIC_READ|GENERIC_WRITE,
     FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE, NULL,
 	(bCreate ? OPEN_ALWAYS : OPEN_EXISTING), 0, NULL);
 
@@ -414,10 +414,35 @@ static INT User_StandardOpen(LPTSTR tszUserName, LPUSERFILE lpUserFile)
 static BOOL User_StandardWrite(LPUSERFILE lpUserFile)
 {
   LPUSERFILE_CONTEXT  lpContext;
+  USERFILE      UserFile;
   BUFFER        WriteBuffer;
   DWORD        dwBytesWritten, dwError;
+  LPTSTR        tszFileName;
+  TCHAR        tpIdBuffer[16];
 
   lpContext    = (LPUSERFILE_CONTEXT)lpUserFile->lpInternal;
+
+  //  If no file handle (e.g. user was just created via User_Register and has never
+  //  been opened via FTP login), open the existing file now to obtain a context.
+  //  User_Register deliberately nulls lpInternal in the shared copy; a Tcl script
+  //  calling "userfile unlock" before any login would hit this path and crash here
+  //  without the guard below.
+  if (!lpContext)
+  {
+    wsprintf(tpIdBuffer, _TEXT("%i"), lpUserFile->Uid);
+    if (!(tszFileName = Config_Get_Path(&IniConfigFile, _TEXT("Locations"), _TEXT("User_Files"), tpIdBuffer, NULL)))
+      ERROR_RETURN(ERROR_NOT_ENOUGH_MEMORY, TRUE);
+    if (User_StandardRead(tszFileName, &UserFile, FALSE) != UM_SUCCESS)
+    {
+      Free(tszFileName);
+      return TRUE;
+    }
+    Free(tszFileName);
+    lpUserFile->lpInternal = UserFile.lpInternal;
+    UserFile.lpInternal    = NULL;  /* ownership transferred — prevent future double-free */
+    lpContext = (LPUSERFILE_CONTEXT)lpUserFile->lpInternal;
+  }
+
   //  Allocate write buffer
   WriteBuffer.size  = 4096;
   WriteBuffer.dwType  = 0;
@@ -669,6 +694,14 @@ User_Default_Write(LPUSERFILE lpUserFile)
 			lpContext    = (LPUSERFILE_CONTEXT)lpUserFile->lpInternal;
 			// everything the same at this point
 		}
+	}
+
+	//  Defensive guard: if lpContext is still NULL here (e.g. called without a
+	//  prior successful User_Default_Open), there is nothing to write to.
+	if (!lpContext)
+	{
+		Free(WriteBuffer.buf);
+		return TRUE;
 	}
 
 	//  Write buffer to file

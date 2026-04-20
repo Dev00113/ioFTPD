@@ -5,7 +5,7 @@ title: Development Environment Setup
 # ioFTPD Development Environment Setup
 
 This document describes how to reproduce the exact development environment used
-to build ioFTPD v7.9+, including all required tools, libraries, and build steps.
+to build ioFTPD v7.10+, including all required tools, libraries, and build steps.
 
 ---
 
@@ -59,10 +59,18 @@ Download: https://visualstudio.microsoft.com/vs/community/
 During installation, select:
 - **Desktop development with C++** workload
 - **Windows 11 SDK** (10.0.22621 or later; 10.0.19041 is the minimum)
-- **MSVC v143 — VS 2022 C++ x86/x64 build tools**
+- **MSVC v143 — VS 2022 C++ x86/x64 build tools** (latest version)
+- **C++ MFC for latest v143 build tools (x86 & x64)** — required for the
+  IoKnock project; found under Individual Components
 
 > All ioFTPD builds are **Win32 (x86)** only. The x64 toolset is not required
 > but does not cause harm if installed.
+
+> The project files pin `<VCToolsVersion>14.44.35207</VCToolsVersion>` (the
+> toolset version that includes MFC) to prevent MSBuild from selecting an older
+> installed toolset where MFC may be absent.  If you install a newer VS 2022
+> update that ships a later compiler, update this version number in all six
+> `.vcxproj` files or remove the pin to let MSBuild use the latest installed.
 
 ### 2. NASM 2.15.05
 

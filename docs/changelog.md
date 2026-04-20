@@ -10,6 +10,192 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [7.10.1] — 2026-04-20
+
+### Added
+
+- **Git-stamped build versioning** — every build now embeds the git commit
+  count and 7-character commit hash in its version string.  The new format is
+  `Major.Minor.Patch.Build-hash` (e.g. `7.10.1.66-b2c9759`) or
+  `7.10.1.66-b2c9759-dirty` for uncommitted builds.  The Build component is the
+  monotonically increasing `git rev-list --count HEAD` value, making builds from
+  a single branch numerically comparable.  The hash provides an exact source
+  reference for crash reports from third-party deployments.
+  - A new PowerShell script `scripts/generate_version.ps1` runs automatically
+    as an MSBuild pre-build target (before both C compilation and RC
+    compilation) and writes `include/GitVersion.h` (gitignored).
+  - `Version.h` now derives `IOFTPD_VERSION_BUILD` from `IOFTPD_GIT_COMMIT_COUNT`
+    and exposes `IOFTPD_VERSION_FULL` (the full version+hash string) for use in
+    the PE version resource.
+  - The startup log, `SITE VERSION`, crash-log header, and `io version` Tcl
+    command all report `tszIoVersionFull` (e.g. `7.10.1.66-b2c9759`).
+  - Falls back gracefully to `Major.Minor.Patch.0-unknown` when git is
+    unavailable (e.g. source downloaded as a zip).
+	
+### Fixed
+
+- **Crash on `userfile unlock` for newly-created users** (`0xC0000005` access
+  violation) — `User_StandardWrite` in `UserFileModule.c` dereferenced
+  `lpUserFile->lpInternal` without checking for NULL.  `lpInternal` is
+  intentionally set to NULL by `User_Register` in the shared copy to prevent
+  use-after-free on error paths; a Tcl bot calling `userfile open` / `userfile
+  unlock` before the user had ever logged in (so no file handle had been opened
+  by `User_StandardOpen`) would crash the daemon.  `User_StandardWrite` now
+  mirrors the recovery pattern already present in `User_Default_Write`: when
+  `lpInternal` is NULL it opens the user file by UID, stores the resulting
+  `USERFILE_CONTEXT` back into the shared copy, and proceeds with the write.
+
+- **User file open/read fails on long paths** — `User_StandardRead` opened user
+  files via the raw `CreateFile` Win32 API, which cannot handle paths exceeding
+  `MAX_PATH` (260 characters).  Replaced with `IoCreateFile`, which transparently
+  retries with a `\\?\`-prefixed wide path when the ANSI call fails with a
+  path-length error.  Relevant for deployments where the `User_Files` directory
+  is nested inside a long directory tree (e.g. on a USB drive).
+
+- **User file rename fails on long paths** (`User_StandardCreate`) — `MoveFileEx`
+  used to rename the newly created user file from its temporary name to its
+  UID-based name could fail for long paths.  Replaced with `IoMoveFileEx`.
+
+- **`MKD`, `CWD`, and `LIST` fail for Windows reserved device names** (`Con`,
+  `Con.hello`, `NUL`, `COM1`, etc.) — `CreateDirectoryA`, `GetFileAttributesExA`,
+  and `FindFirstFileA` return `ERROR_DIRECTORY` (267) on some Windows versions
+  when any path component matches a reserved device name, even when a full
+  absolute path is given.  Three fixes applied:
+  - `IoCreateDirectory` (`LongPath.c`): added `ERROR_DIRECTORY` to the
+    `\\?\`-retry condition, allowing such directories to be created.
+  - `IoGetFileAttributesEx` (`LongPath.c`): added `ERROR_DIRECTORY` to the
+    `\\?\`-retry condition, allowing `CWD` and directory attribute queries to
+    succeed.
+  - `IoWin32FindFirstFile` (`LongPath.c`): added `ERROR_DIRECTORY` to the
+    `\\?\`-retry condition, allowing directory enumeration inside such paths.
+  - `UpdateDirectory` (`DirectoryCache.c`): added `ERROR_DIRECTORY` to the
+    non-fatal child-open error list, preventing a CON-named subdirectory from
+    aborting the scan of its parent and making the parent directory inaccessible.
+  The `\\?\` extended-length prefix bypasses Win32 device-name interception
+  entirely at the NT layer.
+
+- **`ExecuteAsync` crashes with access violation when running non-FTP events**
+  (`0xC0000005 EXCEPTION_ACCESS_VIOLATION` at `ioFTPD.exe+0x14FBC`) — the
+  cleanup path of `ExecuteAsync` called `LockClient(dwCID)` unconditionally.
+  `dwCID` is initialised to `-1` and only updated when the event originates
+  from a connected FTP user (`lpEventData->dwData == C_FTP`).  For
+  scheduler-triggered or Tcl-originated `EXEC` events `dwCID` stayed
+  `0xFFFFFFFF`, causing `lpClientArray[0xFFFFFFFF]` — an out-of-bounds read
+  that returned a garbage non-NULL pointer (`0x0000000A`).  The subsequent
+  `NULL` check passed, and `lpClient->Static.dwFlags &= ~S_SCRIPT` crashed
+  dereferencing `0x0000000E`.  Fix: guard the cleanup block with
+  `if (dwCID != (DWORD)-1)`.
+
+- **Tcl panic falls through to INT3 padding — process hangs instead of dying**
+  (`0x80000003 EXCEPTION_BREAKPOINT`) — when Tcl's internal allocator
+  (`TclAllocElemsEx`) cannot satisfy a realloc it calls `Tcl_Panic`.  The
+  default Tcl panic handler calls `abort()`, which on Windows raises `SIGABRT`;
+  if that signal is swallowed or the handler installed by a prior
+  `SetUnhandledExceptionFilter` call doesn't terminate the process, Tcl's
+  caller falls through into the `0xCC` (INT3) function-padding bytes that
+  follow the panic call site — producing a confusing `EXCEPTION_BREAKPOINT`
+  crash at an address inside `tcl90.dll` rather than at the true fault.
+  Crash-dump analysis of a live incident confirmed this exact sequence: the
+  exception address `tcl90.dll+0xF7C09` is a padding byte immediately after
+  the `add esp, 0x24` that cleans up the panic-call stack frame.  Fixed by
+  installing `IoFTPD_TclPanicProc` via `Tcl_SetPanicProc` during
+  `Tcl_ModuleInit`.  The handler writes a diagnostic message using only stack
+  and kernel resources (no heap allocation, since the heap may be corrupt at
+  panic time), then calls `ExitProcess(1)` — which cannot return.  The
+  message is written to `ioFTPD_panic.log` in the working directory and to the
+  debug output stream; the unhandled-exception filter installed in `WinMain`
+  will already have written a minidump before this point.
+
+- **`User_StandardWrite` — ownership transfer of `lpInternal` leaves stale
+  pointer in local `UserFile`** — the guard added in v7.10.1 to handle a NULL
+  `lpInternal` in `User_StandardWrite` correctly transferred the newly-opened
+  `USERFILE_CONTEXT` pointer from the local `UserFile` stack variable to
+  `lpUserFile->lpInternal`, but did not null out `UserFile.lpInternal`
+  afterward.  While harmless today (the local struct goes out of scope with no
+  destructor), leaving the stale pointer in place is a latent double-free risk
+  if cleanup code is ever added to that path.  Explicitly set
+  `UserFile.lpInternal = NULL` immediately after the transfer.
+
+- **`Group_Register` missing `lpInternal = NULL` — use-after-free risk**
+  (`GroupNew.c`) — the group module's `Group_Register` function copies the
+  caller's `GROUPFILE` struct into the shared copy via `CopyMemory` but did
+  not null out `lpInternal` in the shared copy, unlike `User_Register` which
+  already does this deliberately.  Both the caller and the shared copy would
+  therefore hold the same `GROUPFILE_CONTEXT *` (open file handle).  If the
+  caller's copy were closed first (`Group_StandardClose` → `Free(lpContext)`),
+  the shared copy would retain a dangling pointer that `Group_StandardWrite`
+  would later dereference.  Added `((LPGROUPFILE)lpMemory)->lpInternal = NULL`
+  immediately after the `CopyMemory` call.
+
+- **`Group_StandardWrite` missing NULL check — crash when group has no file
+  context** (`GroupFileModule.c`) — exact parallel of the `User_StandardWrite`
+  bug fixed in v7.10.1.  A Tcl bot calling `groupfile open` / `groupfile
+  unlock` before any FTP session had opened the group file would reach
+  `Group_StandardWrite` with `lpInternal == NULL`, causing an immediate NULL
+  dereference on `lpContext->hFileHandle`.  Added a recovery block that opens
+  the group file by GID, stores the resulting `GROUPFILE_CONTEXT` back into
+  the shared copy, and proceeds with the write — matching the pattern in
+  `User_StandardWrite`.
+
+- **`Group_Default_Write` wrong type and missing NULL guard** (`GroupFileModule.c`)
+  — `lpContext` was declared as `LPUSERFILE_CONTEXT` instead of
+  `LPGROUPFILE_CONTEXT` (copy-paste error from the user-file equivalent;
+  harmless at runtime because both structs contain only a single `HANDLE`
+  field, but incorrect).  Also added a NULL guard before the file I/O: if
+  `Group_Default_Write` is called without a prior successful
+  `Group_Default_Open`, the function now returns `TRUE` (error) instead of
+  crashing on the NULL context pointer.
+
+- **`User_Default_Write` missing defensive NULL guard before file I/O**
+  (`UserFileModule.c`) — for the Default=Group case (`Uid < -2`) the function
+  already opens the file if `lpContext` is NULL.  For the normal Default user
+  case (`Uid >= -2`) no such guard existed: if called without a prior
+  successful `User_Default_Open`, the function would crash at the
+  `SetFilePointer` call.  Added a defensive check that frees the write buffer
+  and returns `TRUE` if `lpContext` is still NULL at that point.
+
+- **`SITE IOVERSION` reports garbled Unicode entities instead of version string**
+  (`RemoteAdmin.c`) — `FormatString` was called with `%hs` to print
+  `tszIoVersionFull`.  Unlike standard `printf`, ioFTPD's custom `FormatString`
+  engine treats the `h` size modifier as a URL-encode flag (`iVariableSize = -1`)
+  rather than "narrow string", causing each byte-pair of the ASCII version string
+  to be output as a `&#NNNNN;` HTML entity.  Fixed by changing `%hs` to `%s`,
+  which correctly routes through the narrow-string printing path.
+
+### Changed
+
+- **`LARGEADDRESSAWARE` enabled — 32-bit process now uses up to 4 GB on 64-bit OS**
+  (`ioFTPD-v7.vcxproj`) — ioFTPD was previously limited to a 2 GB virtual address
+  space on 64-bit Windows.  Under load with many concurrent Tcl scripts and
+  directory cache entries the working set approached this ceiling, leaving no
+  headroom for diagnostic tools (e.g. AppVerifier PageHeap) or memory spikes.
+  Enabled `IMAGE_FILE_LARGE_ADDRESS_AWARE` via `/LARGEADDRESSAWARE` linker flag
+  across all three build configurations (Debug, Release, Purify).  On 64-bit
+  Windows Server the process can now address up to ~3.8 GB.
+
+### Build
+
+- **`afxres.h` not found** — all four resource scripts (`ioFTPD.rc`,
+  `ioFTPD-Start.rc`, `ioFTPD-Watch.rc`, `IoKnock.rc`) included `afxres.h`, an
+  MFC-only header not present when the MFC component is absent from the VS
+  install.  Replaced with `winresrc.h`, the standard Windows SDK equivalent for
+  resource scripts.
+
+- **`IDC_STATIC` undefined after `afxres.h` removal** — `IDC_STATIC (-1)` was
+  only defined by `afxres.h` and is absent from the Windows SDK headers.  Added
+  the definition to `IoKnock/resource.h` (included by all IoKnock resource
+  files).
+
+- **MFC libraries not found (`MSB8041`)** — MFC was installed only for the
+  14.44.35207 toolset, but all projects specified `v143` without a version pin,
+  causing MSBuild to select 14.42.34433 (where MFC is absent).  Fixed by adding
+  `<VCToolsVersion>14.44.35207</VCToolsVersion>` to the Globals section of all
+  six project files (`ioFTPD-v7.vcxproj`, `IoKnock.vcxproj`,
+  `ioFTPD-Start.vcxproj`, `ioFTPD-Watch.vcxproj`, `ServiceInstaller.vcxproj`,
+  `VersionAppend.vcxproj`).
+
+---
+
 ## [7.10.0] — 2026-03-03
 
 ### Added

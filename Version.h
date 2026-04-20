@@ -1,9 +1,11 @@
 #pragma once
 
+#include "include/GitVersion.h"
+
 #define IOFTPD_VERSION_MAJOR 7
 #define IOFTPD_VERSION_MINOR 10
-#define IOFTPD_VERSION_PATCH 0
-#define IOFTPD_VERSION_BUILD 0
+#define IOFTPD_VERSION_PATCH 1
+#define IOFTPD_VERSION_BUILD IOFTPD_GIT_COMMIT_COUNT
 
 // String helpers
 #define STRINGIFY2(x) #x
@@ -14,3 +16,12 @@
     STRINGIFY(IOFTPD_VERSION_MINOR) "." \
     STRINGIFY(IOFTPD_VERSION_PATCH) "." \
     STRINGIFY(IOFTPD_VERSION_BUILD)
+
+// Full version string with git build number and commit hash suffix,
+// e.g. "7.10.1.66-b2c9759" or "7.10.1.66-b2c9759-dirty"
+#define IOFTPD_VERSION_FULL \
+    STRINGIFY(IOFTPD_VERSION_MAJOR) "." \
+    STRINGIFY(IOFTPD_VERSION_MINOR) "." \
+    STRINGIFY(IOFTPD_VERSION_PATCH) "." \
+    STRINGIFY(IOFTPD_VERSION_BUILD) \
+    IOFTPD_GIT_SUFFIX

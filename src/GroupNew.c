@@ -567,7 +567,17 @@ Group_Register(LPGROUP_MODULE lpModule,
   //  Reset contents of parent
   ZeroMemory(lpParentGroupFile, sizeof(PARENT_GROUPFILE));
   //  Copy groupfile contents
-  if (lpGroupFile) CopyMemory(lpMemory, lpGroupFile, sizeof(GROUPFILE));
+  if (lpGroupFile)
+  {
+    CopyMemory(lpMemory, lpGroupFile, sizeof(GROUPFILE));
+    //  The caller owns lpInternal (the GROUPFILE_CONTEXT / file handle).  The
+    //  shared copy must NOT share that pointer: if the caller's error path calls
+    //  Group_StandardClose() it would free the context while the registered
+    //  shared copy still holds a reference, causing a use-after-free on the
+    //  next Group_StandardWrite.  Clear it here; the registered copy acquires
+    //  its own file handle the first time it is opened via Group_Open.
+    ((LPGROUPFILE)lpMemory)->lpInternal = NULL;
+  }
   //  Move groupfile inside parent
   lpParentGroupFile->lpGroupFile  = (LPGROUPFILE)lpMemory;
   lpParentGroupFile->hPrimaryLock  = hEvent;

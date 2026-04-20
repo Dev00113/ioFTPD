@@ -22,6 +22,7 @@
 #include <ioFTPD.h>
 #include <pdh.h>
 #include <dbghelp.h>
+#include "GitVersion.h"
 #pragma comment(lib, "dbghelp.lib")
 
 #define DEFAULT_CONFIG_FILE _T("ioFTPD.ini")
@@ -126,6 +127,7 @@ TCHAR           *tszExeName;
 TCHAR            tszExePath[MAX_PATH];
 static TCHAR     tszConfigFile[MAX_PATH];
 DWORD            dwIoVersion[3];
+char             tszIoVersionFull[64];
 UINT64           u64WindowsStartTime;
 UINT64           u64FtpStartTime;
 
@@ -471,7 +473,7 @@ CommonMain()
 	DWORD    dwError;
 	BOOL     bDelay;
 
-	Putlog(LOG_GENERAL, _TEXT("START: \"PID=%u\" \"CmdLine=%s\"\r\n"), dwMyPid, tszCommandLine);
+	Putlog(LOG_GENERAL, _TEXT("START: \"PID=%u\" \"Version=%s\" \"CmdLine=%s\"\r\n"), dwMyPid, tszIoVersionFull, tszCommandLine);
 	QueueJob(ServerStart, NULL, JOB_PRIORITY_HIGH);
 
 	if (Config_Get_Bool(&IniConfigFile, _TEXT("VFS_PreLoad"), _TEXT("DELAY"), &bDelay) || !bDelay)
@@ -631,6 +633,9 @@ DoSetup()
 	tszExeName++;
 
 	GetFileVersion(tszExePath, &dwIoVersion[0], &dwIoVersion[1], &dwIoVersion[2], NULL);
+	sprintf_s(tszIoVersionFull, sizeof(tszIoVersionFull), "%u.%u.%u.%d%s",
+	    dwIoVersion[0], dwIoVersion[1], dwIoVersion[2],
+	    IOFTPD_GIT_COMMIT_COUNT, IOFTPD_GIT_SUFFIX);
 
 	tszExePath[stLen] = 0;
 

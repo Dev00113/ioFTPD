@@ -4,7 +4,7 @@ title: Long Path Support
 
 # Long Path Support in ioFTPD
 
-ioFTPD v7.10.0 introduces full long‑path support across all major FTP operations. This page explains how long‑path handling works, what Windows actually supports, and the real‑world limitations users will encounter on NTFS, mapped drives, and UNC/SMB shares.
+ioFTPD v7.10.0+ supports long‑path operation across all major FTP operations. This page explains how long‑path handling works, what Windows actually supports, and the real‑world limitations users will encounter on NTFS, mapped drives, and UNC/SMB shares.
 
 Long‑path support allows ioFTPD to operate on paths longer than the legacy 260‑character MAX_PATH limit, but **not all backends support the same maximum length**. Understanding these differences is essential for reliable operation.
 

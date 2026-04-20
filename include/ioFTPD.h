@@ -240,6 +240,7 @@ VOID LogStackTrace(LPTSTR tszError, ...);
 extern TCHAR    *tszExeName;
 extern TCHAR     tszExePath[MAX_PATH];
 extern DWORD     dwIoVersion[3];
+extern char      tszIoVersionFull[64];
 extern volatile DWORD dwDaemonStatus;
 extern UINT64    u64WindowsStartTime;
 extern UINT64    u64FtpStartTime;

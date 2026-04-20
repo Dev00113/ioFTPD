@@ -624,15 +624,13 @@ static BOOL UpdateDirectory(LPDIRECTORY lpDirectory, BOOL bRecursive, BOOL bFake
 			  if (! lpPopulated)
 			  {
 				  dwError = GetLastError();
-				  Putlog(LOG_DEBUG,
-				         "UpdateDirectory: child='%s' err=%u -- open failed, using fake entry\r\n",
-				         FindData.cFileName, dwError);
-				  if (dwError != ERROR_FILE_NOT_FOUND       &&
-					  dwError != ERROR_PATH_NOT_FOUND       &&
-					  dwError != ERROR_ACCESS_DENIED        &&
-					  dwError != ERROR_DIRECTORY_LOCKED     &&
-					  dwError != ERROR_FILENAME_EXCED_RANGE &&
-					  dwError != ERROR_INVALID_NAME) break;
+				  //Putlog(LOG_DEBUG,
+				  //       "UpdateDirectory: child='%s' err=%u -- open failed, using fake entry\r\n",
+				  //       FindData.cFileName, dwError);
+				  // Any error opening a child directory is non-fatal for the parent scan.
+				  // Any filesystem, network, or device-name error on a child just creates a
+				  // fake entry so the parent listing remains usable. Only out-of-memory
+				  // (caught by the Allocate check below) will abort the parent scan.
 				  dwError  = NO_ERROR;
 				  // Child exists (found via FindData) but cannot be fully populated.
 				  // Create a minimal fake entry so it appears in directory listings.
@@ -810,9 +808,13 @@ static BOOL UpdateDirectory(LPDIRECTORY lpDirectory, BOOL bRecursive, BOOL bFake
     } while (IoWin32FindNextFile(hFind, &FindData));
     FindClose(hFind);
   }
-  else 
+  else
   {
     dwError  = GetLastError();
+    if (g_bIoDebugLog)
+        Putlog(LOG_DEBUG,
+            _T("UpdateDirectory: IoWin32FindFirstFile failed err=%u path='%s'\r\n"),
+            dwError, lpDirectory->tszFileName);
     DirectorySize = 0;
     dwSubDirectories = 0;
   }
@@ -1020,13 +1022,15 @@ BOOL ReadDirectoryPermissions(LPDIRECTORY lpDirectory)
     n  = GetLastError();
     Free(pBuffer);
     // ERROR_FILE_NOT_FOUND: .ioFTPD absent, use default permissions.
-    // ERROR_PATH_NOT_FOUND / ERROR_FILENAME_EXCED_RANGE / ERROR_INVALID_NAME:
-    //   ANSI CreateFile cannot resolve the long path; treat as absent and
-    //   use default permissions (UpdateDirectory already confirmed the
-    //   parent directory itself is accessible via IoWin32FindFirstFile).
-    // IoCreateFile already retried with W+\\?\ on path-length errors;
-    // only FILE_NOT_FOUND (absent) and PATH_NOT_FOUND (no parent) are benign.
-    if (n != ERROR_FILE_NOT_FOUND && n != ERROR_PATH_NOT_FOUND) return FALSE;
+    // ERROR_PATH_NOT_FOUND: parent path inaccessible, use defaults.
+    // ERROR_DIRECTORY (267): IoCreateFile's \\?\ retry also failed to find
+    //   the file (e.g. on some network configurations for device-named paths);
+    //   treat as absent and use default permissions.
+    // ERROR_INVALID_HANDLE (6): returned by some mapped network drives for
+    //   paths whose intermediate component is a device name (CON, NUL, etc.);
+    //   treat as absent and use default permissions.
+    if (n != ERROR_FILE_NOT_FOUND && n != ERROR_PATH_NOT_FOUND &&
+        n != ERROR_DIRECTORY      && n != ERROR_INVALID_HANDLE) return FALSE;
     return TRUE;
   }
 
@@ -1652,6 +1656,10 @@ LPDIRECTORYINFO OpenDirectory(LPTSTR tszFileName, BOOL bRecursive, BOOL bFakeDir
 		if (!bResult)
 		{
 			dwError = GetLastError();
+			if (g_bIoDebugLog)
+				Putlog(LOG_DEBUG,
+					_T("OpenDirectory: IoGetFileAttributesEx failed err=%u path='%s'\r\n"),
+					dwError, lpDirectory->tszFileName);
 			goto CONTINUE;
 		}
 		if (!(FileAttributes.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
@@ -2084,7 +2092,16 @@ BOOL GetFileInfo2(LPTSTR tszFileName, LPFILEINFO *lpFileInfo, BOOL bNoCheck, LPD
   dwPath  = _tcslen(tszPath);
   //  Determinate filetype and verify existence
   dwFileAttributes  = IoGetFileAttributes(tszFileName);
-  if (dwFileAttributes == INVALID_FILE_ATTRIBUTES) return FALSE;
+  if (dwFileAttributes == INVALID_FILE_ATTRIBUTES)
+  {
+      DWORD dwSavedErr = GetLastError();  // save before Putlog clobbers it
+      if (g_bIoDebugLog)
+          Putlog(LOG_DEBUG,
+              _T("GetFileInfo2: IoGetFileAttributes failed err=%u path='%s'\r\n"),
+              dwSavedErr, tszFileName);
+      SetLastError(dwSavedErr);           // restore after Putlog
+      return FALSE;
+  }
   if (!bNoCheck && ((dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) || (dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)))
   {
 	  if ((dwPath > 1 && tszPath[1] == _T(':')) &&

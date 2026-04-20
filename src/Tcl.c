@@ -2175,7 +2175,7 @@ Tcl_Configuration(LPTCL_INTERPRETER lpTclInterpreter,
     }
 	else if (!stricmp(szCommand, "version"))
 	{
-		sprintf_s(temp, sizeof(temp), "%u %u %u", dwIoVersion[0], dwIoVersion[1], dwIoVersion[2]);
+		sprintf_s(temp, sizeof(temp), "%s", tszIoVersionFull);
 		// no need to convert UTF8 here
 		Tcl_AppendResult(Interp, temp, NULL);
 		iReturn = TCL_OK;
@@ -4884,6 +4884,61 @@ BOOL TclExecute(LPEVENT_DATA lpEventData, IO_STRING *Arguments)
 }
 
 
+/*
+ * IoFTPD_TclPanicProc — installed via Tcl_SetPanicProc during module init.
+ *
+ * Tcl calls this whenever it hits an unrecoverable internal error (e.g. a
+ * failed realloc, a corrupted list object, or any other panic-worthy
+ * condition).  The default Tcl handler writes to stderr and calls abort(),
+ * which raises SIGABRT.  On Windows that typically raises a second exception
+ * and can leave the process in a state where it falls through into INT3
+ * padding bytes — producing a confusing 0x80000003 EXCEPTION_BREAKPOINT in
+ * the crash dump rather than a useful fault address.
+ *
+ * This handler writes a minimal log entry using only stack and kernel
+ * resources (no heap allocation, since the heap may be corrupt when we are
+ * called), then terminates the process cleanly via ExitProcess so that the
+ * unhandled-exception filter has already had a chance to write a minidump
+ * before we reach this point.
+ */
+static void IoFTPD_TclPanicProc(const char *format, ...)
+{
+	va_list  args;
+	char     buf[2048];
+	HANDLE   hFile;
+	DWORD    dwWritten, dwLen;
+
+	va_start(args, format);
+	_vsnprintf_s(buf, sizeof(buf), _TRUNCATE, format, args);
+	va_end(args);
+
+	/* DebugOutput works even with a corrupt heap. */
+	OutputDebugStringA("ioFTPD Tcl panic: ");
+	OutputDebugStringA(buf);
+	OutputDebugStringA("\r\n");
+
+	/* Append to a sidecar log in the process working directory so the
+	 * message survives after the process exits.  All Win32 kernel calls —
+	 * no heap involvement. */
+	hFile = CreateFileA("ioFTPD_panic.log",
+	                    GENERIC_WRITE,
+	                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+	                    NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile != INVALID_HANDLE_VALUE)
+	{
+		SetFilePointer(hFile, 0, NULL, FILE_END);
+		dwLen = (DWORD)strlen(buf);
+		WriteFile(hFile, "Tcl panic: ", 11, &dwWritten, NULL);
+		WriteFile(hFile, buf,           dwLen, &dwWritten, NULL);
+		WriteFile(hFile, "\r\n",        2,     &dwWritten, NULL);
+		CloseHandle(hFile);
+	}
+
+	/* Must not return — Tcl falls through to INT3 padding if we do. */
+	ExitProcess(1);
+}
+
+
 BOOL Tcl_ModuleInit(VOID)
 {
 	Tcl_Interp  *lpInterp;
@@ -4902,6 +4957,7 @@ BOOL Tcl_ModuleInit(VOID)
 
 	if (! GetModuleFileNameA(NULL, szBuffer, _MAX_PATH)) return TRUE;
 	Tcl_FindExecutable(szBuffer);
+	Tcl_SetPanicProc(IoFTPD_TclPanicProc);
 	//  Allocate Tls index
 	dwTclInterpreterTlsIndex  = TlsAlloc();
 	if (dwTclInterpreterTlsIndex == TLS_OUT_OF_INDEXES) return TRUE;

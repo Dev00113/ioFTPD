@@ -976,11 +976,14 @@ BOOL ExecuteAsync(LPEVENT_DATA lpEventData, IO_STRING *Arguments)
 		CloseHandle(ProcessInformation.hProcess);
 		Free(OutBuffer.buf);
 
-		lpClient = LockClient(dwCID);
-		if (lpClient)
+		if (dwCID != (DWORD)-1)
 		{
-			lpClient->Static.dwFlags &= ~S_SCRIPT;
-			UnlockClient(dwCID);
+			lpClient = LockClient(dwCID);
+			if (lpClient)
+			{
+				lpClient->Static.dwFlags &= ~S_SCRIPT;
+				UnlockClient(dwCID);
+			}
 		}
 	}
 	else

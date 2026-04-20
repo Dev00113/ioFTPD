@@ -886,7 +886,8 @@ Upload(LPFTPUSER lpUser,
 	else
 	{
 		dwError = GetLastError();
-		//Putlog(LOG_DEBUG, "Upload: GetFileInfo failed err=%u — getting parent info\r\n", dwError);
+		if (g_bIoDebugLog)
+			Putlog(LOG_DEBUG, _T("Upload: GetFileInfo failed err=%u path='%s'\r\n"), dwError, tszFileName);
 
 		if (dwError == ERROR_FILE_NOT_FOUND)
 		{
@@ -896,7 +897,8 @@ Upload(LPFTPUSER lpUser,
 			if (!bResult)
 			{
 				dwError = GetLastError();
-				//Putlog(LOG_DEBUG, "Upload: GetVfsParentFileInfo failed err=%u\r\n", dwError);
+				if (g_bIoDebugLog)
+					Putlog(LOG_DEBUG, _T("Upload: GetVfsParentFileInfo failed err=%u\r\n"), dwError);
 			}
 			else
 			{
@@ -965,14 +967,16 @@ Upload(LPFTPUSER lpUser,
 				else
 				{
 					dwError = GetLastError();
-					//Putlog(LOG_DEBUG, "Upload: ioOpenFile failed err=%u\r\n", dwError);
+					if (g_bIoDebugLog)
+						Putlog(LOG_DEBUG, _T("Upload: ioOpenFile failed err=%u path='%s'\r\n"), dwError, tszFileName);
 				}
 			}
 		}
 		else
 		{
 			dwError = GetLastError();
-			//Putlog(LOG_DEBUG, "Upload: Access/PathCheck failed err=%u\r\n", dwError);
+			if (g_bIoDebugLog)
+				Putlog(LOG_DEBUG, _T("Upload: Access/PathCheck failed err=%u path='%s'\r\n"), dwError, tszFileName);
 		}
 		CloseFileInfo(lpFileInfo);
 	}
