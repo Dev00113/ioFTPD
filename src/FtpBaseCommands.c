@@ -141,7 +141,7 @@ VOID MaybeDisplayStatus(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix)
 			return;
 		}
 		_tcsncpy_s(tszFileName, sizeof(tszFileName)/sizeof(*tszFileName), tszBasePath, _TRUNCATE);
-		iLen = _tcslen(tszFileName);
+		iLen = (INT32)_tcslen(tszFileName);
 
 		_tcsncpy_s(&tszFileName[iLen], sizeof(tszFileName)/sizeof(*tszFileName) - iLen, _T("\\ServerShutdown"), _TRUNCATE);
 		MessageFile_Show(tszFileName, &lpUser->CommandChannel.Out, lpUser, DT_FTPUSER, tszMultilinePrefix, NULL);
@@ -157,7 +157,7 @@ VOID MaybeDisplayStatus(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix)
 				return;
 			}
 			_tcsncpy_s(tszFileName, sizeof(tszFileName)/sizeof(*tszFileName), tszBasePath, _TRUNCATE);
-			iLen = _tcslen(tszFileName);
+			iLen = (INT32)_tcslen(tszFileName);
 		}
 
 		_tcsncpy_s(&tszFileName[iLen], sizeof(tszFileName)/sizeof(*tszFileName) - iLen, _T("\\ServerClosing"), _TRUNCATE);
@@ -177,7 +177,7 @@ VOID MaybeDisplayStatus(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix)
 					break;
 				}
 				_tcsncpy_s(tszFileName, sizeof(tszFileName)/sizeof(*tszFileName), tszBasePath, _TRUNCATE);
-				iLen = _tcslen(tszFileName);
+				iLen = (INT32)_tcslen(tszFileName);
 			}
 
 			if (lpClient = LockClient(lpUser->Connection.dwUniqueId))
@@ -323,7 +323,7 @@ static BOOL FTP_ClientType(LPFTPUSER lpUser, IO_STRING *Args)
 	}
 
 	tszClient  = GetStringIndex(Args, STR_ALL);
-	iLen = _tcslen(tszClient)+1;
+	iLen = (int)_tcslen(tszClient)+1;
 
 	if (!(lpUser->FtpVariables.tszClientType = Allocate("ClientType", iLen*sizeof(TCHAR))))
 	{
@@ -367,7 +367,7 @@ static BOOL FTP_XCRC(LPFTPUSER lpUser, IO_STRING *Args)
 	{
 	case 3:
 		tszFileName = GetStringIndexStatic(Args, 1);
-		iScan = sscanf_s(tszFileName, "%I64u%c", &u64Start, &tChar);
+		iScan = sscanf_s(tszFileName, "%I64u%c", &u64Start, &tChar, 1);
 		if (iScan != 1)
 		{
 			dwError = ERROR_INVALID_ARGUMENTS;
@@ -376,7 +376,7 @@ static BOOL FTP_XCRC(LPFTPUSER lpUser, IO_STRING *Args)
 		dwCrc = 2;
 	case 2:
 		tszFileName = GetStringIndexStatic(Args, dwCrc);
-		iScan = sscanf_s(tszFileName, "%I64u%c", &u64End, &tChar);
+		iScan = sscanf_s(tszFileName, "%I64u%c", &u64End, &tChar, 1);
 		if (iScan != 1 || u64Start > u64End)
 		{
 			dwError = ERROR_INVALID_ARGUMENTS;
@@ -705,8 +705,8 @@ FTP_Identify(LPFTPUSER lpUser,
   pSemicolon[0]  = '\0';
 
   //  String length
-  dwHostName  = strlen(&pSemicolon[1]);
-  dwIdent    = pAt - szLine;
+  dwHostName  = (DWORD)strlen(&pSemicolon[1]);
+  dwIdent    = (DWORD)(pAt - szLine);
 
   if (dwHostName > MAX_HOSTNAME - 1) dwHostName  = MAX_HOSTNAME - 1;
   if (dwIdent > MAX_IDENT - 1) dwIdent  = MAX_IDENT - 1;
@@ -983,7 +983,7 @@ FTP_RenameTo(LPFTPUSER lpUser,
 				  AdminSize.Progress.lpCommand = &lpUser->CommandChannel;
 				  AdminSize.Progress.tszMultilinePrefix = _T("250-");
 				  AdminSize.Progress.dwDelay  = 10000;
-				  dwInitialTicks = SafeGetTickCount64() + AdminSize.Progress.dwDelay;
+				  dwInitialTicks = (DWORD)(SafeGetTickCount64() + AdminSize.Progress.dwDelay);
 				  AdminSize.Progress.dwTicks  = dwInitialTicks;
 				  AdminSize.Progress.tszFormatString = _T("Still sizing move... %u dirs, %u files processed, %u access errors.\r\n");
 				  AdminSize.dwDirCount++;
@@ -1281,7 +1281,7 @@ static BOOL FTP_FileTime(LPFTPUSER lpUser, IO_STRING *Args)
 	  tszTime = GetStringIndexStatic(Args, 0);
 	  // validate time format: YYYYMMDDHHMMSS filename
 	  if ((_tcsnlen(tszTime, 15) != 14) ||
-		  (6 != _stscanf_s(tszTime, "%4d%2d%2d%2d%2d%2d",
+		  (6 != _stscanf_s(tszTime, "%4hd%2hd%2hd%2hd%2hd%2hd",
 		  &SystemTime.wYear, &SystemTime.wMonth, &SystemTime.wDay,
 		  &SystemTime.wHour, &SystemTime.wMinute, &SystemTime.wSecond)) ||
 		  (!SystemTimeToFileTime(&SystemTime, &FileTime)))
@@ -1385,7 +1385,7 @@ static BOOL FTP_FileTime(LPFTPUSER lpUser, IO_STRING *Args)
 		  else
 		  {
 			  // mark directory as changed
-			  dwLen = _tcslen(tszPath);
+			  dwLen = (DWORD)_tcslen(tszPath);
 			  tszSlash = _tcsrchr(tszPath, _T('\\'));
 
 			  if (tszSlash && dwLen > 3)

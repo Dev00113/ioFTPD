@@ -89,7 +89,7 @@ BOOL Help_Init(BOOL bFirstInitialization)
 			}
 			continue;
 		}
-		dwName = _tcslen(tszName);
+		dwName = (DWORD)_tcslen(tszName);
 		if (!dwName || (*tszName == _T('*')))
 		{
 			tszSiteHelpFlagArray[dwSiteHelpFiles] = NULL;
@@ -159,7 +159,7 @@ BOOL Help_Do_Topic(LPCONFIG_FILE lpConfigFile, LPFTPUSER lpUser, LPTSTR tszTopic
 	BOOL     bSuppress, bFinal, bTestCmds, bTestChange, bMarked, bMatched, bBad;
 	
 	lpLine = NULL;
-	dwTopic = _tcslen(tszTopic);
+	dwTopic = (DWORD)_tcslen(tszTopic);
 
 	//	Find array
 	for (lpArray = lpConfigFile->lpLineArray ; lpArray ; lpArray = lpArray->Next)
@@ -326,7 +326,7 @@ BOOL Help_Do_Topic(LPCONFIG_FILE lpConfigFile, LPFTPUSER lpUser, LPTSTR tszTopic
 				}
 				else // it's a change command
 				{
-					m = _tcslen(tszCommand);
+					m = (DWORD)_tcslen(tszCommand);
 					for (n = 0 ; ChangeCommand[n].Trigger ; n++)
 					{
 						//	Search for command
@@ -581,7 +581,7 @@ LPTSTR Admin_Help(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRING Args)
 		{
 			// handle change subcommands, if just plain "change" don't need to do anything...
 			tszTopic = GetStringIndexStatic(Args, 2);
-			m = _tcslen(tszTopic);
+			m = (DWORD)_tcslen(tszTopic);
 			for (n = 0 ; ChangeCommand[n].Trigger ; n++)
 			{
 				//	Search for command

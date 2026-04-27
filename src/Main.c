@@ -285,7 +285,7 @@ VOID DummyEncode(PBYTE pIn, DWORD dwIn, PBYTE pOut, LPTSTR tszKey)
   DWORD  dwOffset, n;
   BYTE  pBuffer[20], pCopy[20];
 
-  sha1(pBuffer, tszKey, _tcslen(tszKey));
+  sha1(pBuffer, tszKey, (DWORD)_tcslen(tszKey));
   for (n = 0;n < 20;n++) pBuffer[n]  += (BYTE)((((n << 4) % 3) << 2) * 127);
   ZeroMemory(pOut, dwIn);
   //  Encode data
@@ -307,7 +307,7 @@ VOID DummyDecode(PBYTE pIn, DWORD dwIn, PBYTE pOut, LPTSTR tszKey)
   DWORD  dwOffset, n, dwKey;
   BYTE  pBuffer[20], pCopy[20];
 
-  dwKey  = _tcslen(tszKey);
+  dwKey  = (DWORD)_tcslen(tszKey);
   sha1(pBuffer, tszKey, dwKey);
   for (n = 0;n < 20;n++) pBuffer[n]  += (BYTE)((((n << 4) % 3) << 2) * 127);
   ZeroMemory(pOut, dwIn);
@@ -325,7 +325,7 @@ VOID DummyDecode(PBYTE pIn, DWORD dwIn, PBYTE pOut, LPTSTR tszKey)
 
 BOOL InitializeDaemon(BOOL bFirstInitialization)
 {
-  ULONG  lOffset;
+  ULONG_PTR  lOffset;
   LPVOID  lpParam;
   DWORD  n, dwError, dwSize;
   BOOL  bResult;
@@ -350,13 +350,13 @@ BOOL InitializeDaemon(BOOL bFirstInitialization)
   //  Initialize daemon
   for (n = 0;n < sizeof(Init_Table) / sizeof(INIT_TABLE) && (! bFirstInitialization || bResult);n++)
   {
-    lOffset  = (ULONG)Init_Table[n].InitCommand;
+    lOffset  = (ULONG_PTR)Init_Table[n].InitCommand;
 	if (!lOffset) continue;
 
     switch (Init_Table[n].dwContext)
     {
     case 0:
-      bResult  = ((INIT)lOffset)(bFirstInitialization);
+      bResult  = ((INIT)(ULONG_PTR)lOffset)(bFirstInitialization);
       continue;
     case 1:
       lpParam  = tszConfigFile;
@@ -365,7 +365,7 @@ BOOL InitializeDaemon(BOOL bFirstInitialization)
       lpParam  = &ghInstance;
       break;
     }
-    bResult  = ((INITP)lOffset)(bFirstInitialization, lpParam);
+    bResult  = ((INITP)(ULONG_PTR)lOffset)(bFirstInitialization, lpParam);
   }
   if (bFirstInitialization)
   {

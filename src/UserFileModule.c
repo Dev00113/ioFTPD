@@ -155,7 +155,7 @@ static INT32 User_StandardCreate(LPTSTR tszUserName, INT32 Gid)
   }
 
   //  Get position of '\'
-  iLen = _tcslen(tszFileName);
+  iLen = (INT)_tcslen(tszFileName);
   tpOffset = tszFileName + iLen;
 
   tszGroupName = NULL;
@@ -519,7 +519,7 @@ User_Default_Open(LPUSERFILE lpUserFile, INT32 id)
 
 	if (! (Config_Get_Path(&IniConfigFile, _TEXT("Locations"), _TEXT("User_Files"), _TEXT("Default"), tszFileName))) return TRUE;
 
-	iLen = _tcslen(tszFileName);
+	iLen = (INT)_tcslen(tszFileName);
 	tszOffset = tszFileName + iLen;
 	if (id >= 0)
 	{

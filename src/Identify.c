@@ -172,7 +172,7 @@ UserMaskSetAdd(LPUSERMASKSET lpSet, INT32 Uid, char *szIpHost)
 	if (lpSet->dwCount >= lpSet->dwMax)
 	{
 		lpSet->dwMax += 100;
-		lpSet->lppUserIpHostMasks = ReAllocate(lpSet->lppUserIpHostMasks, "UserIpHostMasks",
+		lpSet->lppUserIpHostMasks = (volatile LPUSERIPHOSTMASK*)ReAllocate((LPVOID)lpSet->lppUserIpHostMasks, "UserIpHostMasks",
 			lpSet->dwMax*sizeof(LPUSERIPHOSTMASK));
 		if (!lpSet->lppUserIpHostMasks)
 		{
@@ -240,7 +240,7 @@ UserMaskSetRemoveUser(LPUSERMASKSET lpSet, INT32 Uid)
 		}
 
 		Free(lpSet->lppUserIpHostMasks[i]);
-		MoveMemory(&lpSet->lppUserIpHostMasks[i], &lpSet->lppUserIpHostMasks[i+1],
+		MoveMemory((PVOID)&lpSet->lppUserIpHostMasks[i], (PVOID)&lpSet->lppUserIpHostMasks[i+1],
 			(lpSet->dwCount-i-1)*sizeof(LPUSERIPHOSTMASK));
 		lpSet->lppUserIpHostMasks[lpSet->dwCount--] = 0;
 	}
@@ -528,7 +528,7 @@ LPBANINFO GetNetworkBans(VOID)
 	for (n = dwHostArrayItems;n--;lpHostInfo++)
 	{
 		if (lpHostInfo[0]->dwAttemptCount >= dwMaxTicks &&
-			(dwDiff = Time_DifferenceDW64(lpHostInfo[0]->dwLastOccurance, dwTickCount)) < dwBanDuration)
+			(dwDiff = (DWORD)Time_DifferenceDW64(lpHostInfo[0]->dwLastOccurance, dwTickCount)) < dwBanDuration)
 		{
 			//	Add ban to list
 			if (lpBanInfo[HEAD])
@@ -577,7 +577,7 @@ VOID UnbanNetworkAddress(LPTSTR tszNetworkAddressMask, LPBUFFER lpBuffer, LPTSTR
 		if (!lpHostInfo) continue;
 
 		if ((lpHostInfo->dwAttemptCount >= dwMaxTicks) &&
-			((dwDiff = Time_DifferenceDW64(lpHostInfo->dwLastOccurance, dwTickCount)) < dwBanDuration))
+			((dwDiff = (DWORD)Time_DifferenceDW64(lpHostInfo->dwLastOccurance, dwTickCount)) < dwBanDuration))
 		{
 			// it's banned so now check IP
 			InetAddress.s_addr = ((PULONG)lpHostInfo->NetworkAddress)[0];
@@ -632,8 +632,8 @@ RegisterNetworkAddress(PBYTE pNetworkAddress, DWORD dwNetworkAddress)
 	lpHostInfo->dwNetworkAddress	= dwNetworkAddress;
 	lpHostInfo->dwShareCount		= 1;
 	lpHostInfo->dwAttemptCount			= 1;
-	lpHostInfo->dwLastOccurance		= dwTickCount;
-	lpHostInfo->dwHostNameCacheTime	= (dwTickCount > dwHostNameCache ? dwTickCount - dwHostNameCache : 1);
+	lpHostInfo->dwLastOccurance		= (DWORD)dwTickCount;
+	lpHostInfo->dwHostNameCacheTime	= (DWORD)(dwTickCount > dwHostNameCache ? dwTickCount - dwHostNameCache : 1);
 	CopyMemory(lpHostInfo->NetworkAddress, pNetworkAddress, dwNetworkAddress);
 
 	EnterCriticalSection(&csHostArray);
@@ -687,9 +687,9 @@ RegisterNetworkAddress(PBYTE pNetworkAddress, DWORD dwNetworkAddress)
 		//	Retrieve new pointer from HostArray
 		lpHostInfo	= lpHostArray[iResult];
 		//	Get time difference
-		dwDifference	= Time_DifferenceDW64(lpHostInfo->dwLastOccurance, dwTickCount);
+		dwDifference	= (DWORD)Time_DifferenceDW64(lpHostInfo->dwLastOccurance, dwTickCount);
 		//	Update tickcount
-		lpHostInfo->dwLastOccurance	= dwTickCount;
+		lpHostInfo->dwLastOccurance	= (DWORD)dwTickCount;
 		//	Check current flags
 		if (lpHostInfo->dwAttemptCount < dwMaxTicks ||
 			dwDifference > dwBanDuration ||
@@ -735,7 +735,7 @@ RegisterNetworkAddress(PBYTE pNetworkAddress, DWORD dwNetworkAddress)
 						lpHostInfo->dwLastAutoBanLogDelay = dwMaxLogSuppression;
 					}
 				}
-				lpHostInfo->dwLastAutoBanLogTime = dwTickCount;
+				lpHostInfo->dwLastAutoBanLogTime = (DWORD)dwTickCount;
 				bReject = TRUE;
 			}
 			bReturn	= TRUE;
@@ -807,7 +807,7 @@ BOOL ResolveThread(LPVOID lpNull)
 		pHostEnt	= gethostbyaddr((PCHAR)lpHostInfo->NetworkAddress, lpHostInfo->dwNetworkAddress, AF_INET);
 
 		if (pHostEnt && pHostEnt->h_name &&
-			(dwHostName = strlen(pHostEnt->h_name)) > 0)
+			(dwHostName = (DWORD)strlen(pHostEnt->h_name)) > 0)
 		{
 			if (dwHostName > MAX_HOSTNAME - 1) dwHostName	= MAX_HOSTNAME - 1;
 			//	Allocate shared memory
@@ -855,7 +855,7 @@ BOOL ResolveThread(LPVOID lpNull)
 			else
 			{
 				//	Free client resources
-				Socket  = (SOCKET)InterlockedExchange(&lpNewClient->Socket, INVALID_SOCKET);
+				Socket  = IoAtomicExchangeSocket(&lpNewClient->Socket, INVALID_SOCKET);
 				if (Socket != INVALID_SOCKET) {
 					closesocket(Socket);
 				}
@@ -973,7 +973,7 @@ BOOL IdentifyClient(LPNEWCLIENT lpNewClient)
 	else if (bError)
 	{
 		//	Free client resources
-		Socket  = (SOCKET)InterlockedExchange(&lpNewClient->Socket, INVALID_SOCKET);
+		Socket  = IoAtomicExchangeSocket(&lpNewClient->Socket, INVALID_SOCKET);
 		if (Socket != INVALID_SOCKET) {
 			closesocket(Socket);
 		}
@@ -1043,7 +1043,7 @@ static BOOL ProcessClient(LPNEWCLIENT lpNewClient)
 		Free(lpUser);
 	}
 	//	Free resources
-	Socket  = (SOCKET)InterlockedExchange(&lpNewClient->Socket, INVALID_SOCKET);
+	Socket  = (SOCKET)(UINT_PTR)InterlockedExchangePointer((PVOID volatile*)&lpNewClient->Socket, (PVOID)(UINT_PTR)INVALID_SOCKET);
 	if (Socket != INVALID_SOCKET) {
 		closesocket(Socket);
 	}
@@ -1156,7 +1156,7 @@ static BOOL Ident_Read(PCONNECTION_INFO pConnection)
 	}
 	else
 	{
-		dwDifference	= Time_DifferenceDW64(lpHostInfo->dwIdentCacheTime, SafeGetTickCount64());
+		dwDifference	= (DWORD)Time_DifferenceDW64(lpHostInfo->dwIdentCacheTime, SafeGetTickCount64());
 		//	Check ident validity
 		if (dwDifference >= dwIdentCache)
 		{
@@ -1277,7 +1277,7 @@ static BOOL Ident_Copy(LPIDENTCLIENT lpIdentClient)
 		while ((++szIdent)[0] == ' ');
 
 		//	Calculate ident length
-		dwIdent	= &lpIdentClient->pBuffer[lpIdentClient->dwBuffer] - szIdent;
+		dwIdent	= (DWORD)(&lpIdentClient->pBuffer[lpIdentClient->dwBuffer] - szIdent);
 		if (dwIdent > MAX_IDENT - 1) dwIdent	= MAX_IDENT - 1;
 
 		//	Allocate memory for new variable
@@ -1286,7 +1286,7 @@ static BOOL Ident_Copy(LPIDENTCLIENT lpIdentClient)
 			//	Copy ident to memory
 			lpMemory	= AllocateShared(lpMemory, NULL, 0);
 			CopyMemory(lpMemory, szIdent, dwIdent);
-			((PCHAR)((ULONG)lpMemory + dwIdent))[0]	= '\0';
+			((PCHAR)((ULONG_PTR)lpMemory + dwIdent))[0]	= '\0';
 		}
 	}
 
@@ -1431,7 +1431,7 @@ Knock_Accept(WPARAM wParam, LPARAM lParam)
 		// keeping state only useful if more than 1 port used
 
 		EnterCriticalSection(&csKnockHosts);
-		dwTicks = SafeGetTickCount64();
+		dwTicks = (DWORD)SafeGetTickCount64();
 		CopyMemory(&KnockInfo.InetAddr, &addrR.sin_addr, sizeof(addrR.sin_addr));
 		KnockInfo.dwStatus     = 0;
 		KnockInfo.dwKnockTicks = dwTicks;
@@ -1955,19 +1955,19 @@ VOID Identify_DeInit(VOID)
 {
 	LPHOSTINFO	lpHostInfo;
 
-	while (InterlockedExchange(&UserIpHostMasks.dwLock, TRUE)) SwitchToThread();
+	while (InterlockedExchange((volatile LONG*)&UserIpHostMasks.dwLock, TRUE)) SwitchToThread();
 	UserMaskSetReset(&UserIpHostMasks);
 	UserIpHostMasks.dwMax = 0;
-	Free(UserIpHostMasks.lppUserIpHostMasks);
+	Free((LPVOID)UserIpHostMasks.lppUserIpHostMasks);
 	UserIpHostMasks.lppUserIpHostMasks = 0;
-	InterlockedExchange(&UserIpHostMasks.dwLock, FALSE);
+	InterlockedExchange((volatile LONG*)&UserIpHostMasks.dwLock, FALSE);
 
-	while (InterlockedExchange(&ImmuneMasks.dwLock, TRUE)) SwitchToThread();
+	while (InterlockedExchange((volatile LONG*)&ImmuneMasks.dwLock, TRUE)) SwitchToThread();
 	UserMaskSetReset(&ImmuneMasks);
 	ImmuneMasks.dwMax   = 0;
-	Free(ImmuneMasks.lppUserIpHostMasks);
+	Free((LPVOID)ImmuneMasks.lppUserIpHostMasks);
 	ImmuneMasks.lppUserIpHostMasks = 0;
-	InterlockedExchange(&ImmuneMasks.dwLock, FALSE);
+	InterlockedExchange((volatile LONG*)&ImmuneMasks.dwLock, FALSE);
 
 	//	Delete critical sections
 	DeleteCriticalSection(&csResolveList);

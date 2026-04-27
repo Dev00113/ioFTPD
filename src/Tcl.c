@@ -207,7 +207,7 @@ static CHAR*
 Tcl_IoGetString(Tcl_Obj* objPtr, char* string, int length, BOOL* pbValid)
 {
 	unsigned char* tclStart, * tcl, * buf;
-	int tclLen;
+	Tcl_Size tclLen;
 	BOOL valid = TRUE;
 	WCHAR uniChar;
 
@@ -223,7 +223,7 @@ Tcl_IoGetString(Tcl_Obj* objPtr, char* string, int length, BOOL* pbValid)
 
 	// Allocate buffer if needed
 	if (string == NULL || length == 0) {
-		length = tclLen + 1;
+		length = (int)(tclLen + 1);
 		string = (char*)Allocate("Tcl_IoGetString", length);
 		if (!string) {
 			if (pbValid) *pbValid = FALSE;
@@ -300,7 +300,7 @@ Tcl_IoGetString(Tcl_Obj* objPtr, char* string, int length, BOOL* pbValid)
 
 	// Fallback: copy original string if buffer was allocated
 	if (length > 0 && string) {
-		int copyLen = min(tclLen, length - 1);
+		int copyLen = (int)min(tclLen, (Tcl_Size)(length - 1));
 		CopyMemory(string, tclStart, copyLen);
 		string[copyLen] = '\0';
 		return string;
@@ -361,7 +361,7 @@ Tcl_IoSetStringObj(Tcl_Obj *objPtr, char *string, int length)
 
 	if (length < 0)
 	{
-		length = strlen(string);
+		length = (int)strlen(string);
 	}
 
 	if (length > sizeof(temp))
@@ -402,7 +402,7 @@ Tcl_IoAppendResult(Tcl_Interp *interp, char *string, int length)
 	if (!string) return;
 	if (length < 0)
 	{
-		length = strlen(string);
+		length = (int)strlen(string);
 	}
 
 	if (length > sizeof(temp))
@@ -492,7 +492,8 @@ Tcl_WaitObject(LPTCL_INTERPRETER lpTclInterpreter,
   LPTSTR        tszObjectName;
   LPSTR        szCommand, szObjectType, szParam;
   DWORD        dwObjectName, dwSetCount, n;
-  LONG        lResult, lWait, lMaxCount;
+  Tcl_WideInt lResult;
+  LONG        lWait, lMaxCount;
   BOOL        bManualReset, bError;
   INT          iReturn;
   char        temp2[1024];
@@ -521,7 +522,7 @@ Tcl_WaitObject(LPTCL_INTERPRETER lpTclInterpreter,
 			InterlockedIncrement(&lpWaitObject->lReferenceCount);
 			lpTclData->lpWaitObject[lpTclData->dwWaitObject++]  = lpWaitObject;
 			iReturn  = TCL_OK;
-			lResult  = (LONG)lpWaitObject;
+			lResult  = (Tcl_WideInt)(ULONG_PTR)lpWaitObject;
 			break;
 		}
       }
@@ -530,7 +531,7 @@ Tcl_WaitObject(LPTCL_INTERPRETER lpTclInterpreter,
       if (! lpWaitObject && Objc > 3U &&
         (szObjectType = Tcl_GetString(Objv[3])))
       {
-        dwObjectName  = _tcslen(tszObjectName);
+        dwObjectName  = (DWORD)_tcslen(tszObjectName);
         lpWaitObject  = (LPTCL_WAITOBJECT)Allocate("Tcl:WaitObject", sizeof(TCL_WAITOBJECT) + dwObjectName * sizeof(TCHAR));
 
         if (lpWaitObject)
@@ -583,7 +584,7 @@ Tcl_WaitObject(LPTCL_INTERPRETER lpTclInterpreter,
             lpWaitObject->lpPrev  = NULL;
             lpTclWaitObjectList  = lpWaitObject;
             lpTclData->lpWaitObject[lpTclData->dwWaitObject++]  = lpWaitObject;
-            lResult  = (LONG)lpWaitObject;
+            lResult  = (Tcl_WideInt)(ULONG_PTR)lpWaitObject;
           }
           else Free(lpWaitObject);
         }
@@ -595,7 +596,7 @@ Tcl_WaitObject(LPTCL_INTERPRETER lpTclInterpreter,
   {
 	  //  close/delete wait object
 	  if (Objc == 3U &&
-		  Tcl_GetLongFromObj(Interp, Objv[2], (LPLONG)&lpWaitObject) == TCL_OK)
+		  Tcl_GetWideIntFromObj(Interp, Objv[2], (Tcl_WideInt *)&lpWaitObject) == TCL_OK)
 	  {
 		  iReturn  = TCL_OK;
 		  EnterCriticalSection(&csTclWaitObjectList);
@@ -617,7 +618,7 @@ Tcl_WaitObject(LPTCL_INTERPRETER lpTclInterpreter,
   else if (! stricmp(szCommand, "preserve"))
   {
 	  if (Objc == 3U &&
-		  Tcl_GetLongFromObj(Interp, Objv[2], (LPLONG)&lpWaitObject) == TCL_OK)
+		  Tcl_GetWideIntFromObj(Interp, Objv[2], (Tcl_WideInt *)&lpWaitObject) == TCL_OK)
 	  {
 		  iReturn = TCL_OK;
 		  lResult = InterlockedIncrement(&lpWaitObject->lReferenceCount);
@@ -629,14 +630,14 @@ Tcl_WaitObject(LPTCL_INTERPRETER lpTclInterpreter,
     //  Wait for object
     if ((Objc == 4U ||
       (Objc == 5U && Tcl_GetLongFromObj(Interp, Objv[4], (LPLONG)&dwSetCount) == TCL_OK)) &&
-      Tcl_GetLongFromObj(Interp, Objv[2], (LPLONG)&lpWaitObject) == TCL_OK &&
+      Tcl_GetWideIntFromObj(Interp, Objv[2], (Tcl_WideInt *)&lpWaitObject) == TCL_OK &&
       Tcl_GetLongFromObj(Interp, Objv[3], &lWait) == TCL_OK)
     {
 		SetBlockingThreadFlag();
 		switch (lpWaitObject->dwType)
 		{
 		case SPINLOCK:
-			while (InterlockedExchange((LPLONG)&lpWaitObject->lpData, TRUE) && lWait--) SwitchToThread();
+			while (InterlockedExchangePointer(&lpWaitObject->lpData, (LPVOID)TRUE) && lWait--) SwitchToThread();
 			lResult  = (lWait == -1 ? 1 : 0);
 			iReturn  = TCL_OK;
 			break;
@@ -675,12 +676,12 @@ Tcl_WaitObject(LPTCL_INTERPRETER lpTclInterpreter,
     //  Set object state to signaled
     dwSetCount  = 1;
     if ((Objc == 3U || (Objc == 4U && Tcl_GetLongFromObj(Interp, Objv[3], (LPLONG)&dwSetCount) == TCL_OK)) &&
-      Tcl_GetLongFromObj(Interp, Objv[2], (LPLONG)&lpWaitObject) == TCL_OK)
+      Tcl_GetWideIntFromObj(Interp, Objv[2], (Tcl_WideInt *)&lpWaitObject) == TCL_OK)
     {
       switch (lpWaitObject->dwType)
       {
       case SPINLOCK:
-        lResult  = InterlockedExchange((LPLONG)&lpWaitObject->lpData, FALSE);
+        lResult  = (LONG_PTR)InterlockedExchangePointer(&lpWaitObject->lpData, (LPVOID)FALSE);
         iReturn  = TCL_OK;
         break;
       case SEMAPHORE:
@@ -699,12 +700,12 @@ Tcl_WaitObject(LPTCL_INTERPRETER lpTclInterpreter,
     //  Set object state to non-signaled
     dwSetCount  = 1;
     if ((Objc == 3U || (Objc == 4U && Tcl_GetLongFromObj(Interp, Objv[3], (LPLONG)&dwSetCount) == TCL_OK)) &&
-      Tcl_GetLongFromObj(Interp, Objv[2], (LPLONG)&lpWaitObject) == TCL_OK)
+      Tcl_GetWideIntFromObj(Interp, Objv[2], (Tcl_WideInt *)&lpWaitObject) == TCL_OK)
     {
       switch (lpWaitObject->dwType)
       {
       case SPINLOCK:
-        lResult  = InterlockedExchange((LPLONG)&lpWaitObject->lpData, TRUE);
+        lResult  = (LONG_PTR)InterlockedExchangePointer(&lpWaitObject->lpData, (LPVOID)TRUE);
         iReturn  = TCL_OK;
         break;
       case SEMAPHORE:
@@ -741,7 +742,7 @@ Tcl_WaitObject(LPTCL_INTERPRETER lpTclInterpreter,
 	  return TCL_OK;
   }
 
-  Tcl_SetLongObj(lpResult, lResult);
+  Tcl_SetWideIntObj(lpResult, lResult);
   Tcl_SetObjResult(Interp, lpResult);
   return iReturn;
 }
@@ -773,7 +774,7 @@ Tcl_Sha1(LPTCL_INTERPRETER lpTclInterpreter,
   }
 
   //  Hash string
-  sha1(pHash, tszString, _tcslen(tszString));
+  sha1(pHash, tszString, (unsigned long)_tcslen(tszString));
   for (i = 0;i < 20;i++) sprintf(&pBuffer[i << 1], "%02x", pHash[i]);
 
   //  Set result
@@ -951,7 +952,7 @@ Tcl_Timer(LPTCL_INTERPRETER lpTclInterpreter,
 		Tcl_SetObjResult(Interp, lpResult);
 		return TCL_ERROR;
 	}
-	dwLen = _tcslen(tszCommand);
+	dwLen = (DWORD)_tcslen(tszCommand);
 
 	lpEvent = (LPEVENT_COMMAND) Allocate("lpEventCommand", sizeof(*lpEvent));
 	if (!lpEvent)
@@ -1031,7 +1032,7 @@ INT Tcl_Client(LPTCL_INTERPRETER lpTclInterpreter,
         if ((tszPath = Tcl_IoGetString(Objv[3], temp3, sizeof(temp3), 0)))
         {
           iReturn  = TCL_OK;
-          iResult  = ReleasePath(NULL, tszPath);
+          iResult  = (INT)ReleasePath(NULL, tszPath);
         }
       }
       else if (! stricmp(szArgument, "REALPATH"))
@@ -1040,7 +1041,7 @@ INT Tcl_Client(LPTCL_INTERPRETER lpTclInterpreter,
         if ((tszPath = Tcl_IoGetString(Objv[3], temp3, sizeof(temp3), 0)))
         {
           iReturn  = TCL_OK;
-          iResult  = ReleasePath(tszPath, 0);
+          iResult  = (INT)ReleasePath(tszPath, 0);
         }
       }
       else if (! stricmp(szArgument, "UID"))
@@ -1049,7 +1050,7 @@ INT Tcl_Client(LPTCL_INTERPRETER lpTclInterpreter,
         if (Tcl_GetIntFromObj(Interp, Objv[3], &UserID) != TCL_ERROR)
         {
           iReturn  = TCL_OK;
-          iResult  = KickUser(UserID);
+          iResult  = (INT)KickUser(UserID);
         }
       }
       else if (! stricmp(szArgument, "CLIENTID"))
@@ -1059,7 +1060,7 @@ INT Tcl_Client(LPTCL_INTERPRETER lpTclInterpreter,
           UserID >= 0 && UserID < MAX_CLIENTS)
         {
           iReturn  = TCL_OK;
-          iResult  = KillUser(UserID);
+          iResult  = (INT)KillUser(UserID);
         }
       }
     }
@@ -1078,7 +1079,7 @@ INT Tcl_Client(LPTCL_INTERPRETER lpTclInterpreter,
         }
         else
         {
-          lpTclData->WhoData.iOffset = SeekOnlineData(&OnlineData, lpTclData->WhoData.iOffset);
+          lpTclData->WhoData.iOffset = (INT)SeekOnlineData(&OnlineData, lpTclData->WhoData.iOffset);
           if (lpTclData->WhoData.iOffset == -1) return TCL_OK;
           iOffset  = lpTclData->WhoData.iOffset - 1;
         }
@@ -1321,7 +1322,7 @@ Tcl_Buffer(LPTCL_INTERPRETER lpTclInterpreter,
 				iReturn  = TCL_OK;
 				lpBuffer->len  = 0;
 				//  Copy string to buffer
-				Put_Buffer(lpBuffer, tszString, _tcslen(tszString));
+				Put_Buffer(lpBuffer, tszString, (DWORD)_tcslen(tszString));
 				Free(tszString);
 			}
 		}
@@ -1808,23 +1809,36 @@ Tcl_Resolve(LPTCL_INTERPRETER lpTclInterpreter,
 			if (MountData.Resume)
 			{
 				lpMountPoint = MountData.Resume;
-				c = &temp3[lpMountPoint->dwPathLen-1];
-				c[1] = 0;
-				while (lpMountPoint)
+				// dwPathLen is the total virtual path length built by walking the
+				// mount-point parent chain.  On servers with many drives/VFS entries
+				// it can exceed sizeof(temp3) and overflow the stack buffer, corrupting
+				// adjacent locals and triggering the /GS security-cookie check which
+				// calls TerminateProcess — leaving no dump, no log.
+				if (lpMountPoint->dwPathLen >= sizeof(temp3) - 1)
 				{
-					*c = '/';
-					c -= lpMountPoint->dwName;
-					strncpy(c, lpMountPoint->szName, lpMountPoint->dwName);
-					c--;
-					lpMountPoint = lpMountPoint->lpParent;
+					Putlog(LOG_ERROR, _T("io link: VFS path length %lu exceeds buffer (%lu); skipping mount-point result.\r\n"),
+					       lpMountPoint->dwPathLen, (DWORD)(sizeof(temp3) - 1));
 				}
-
-				if (!(lpNew = Tcl_NewObj())) return TCL_ERROR;
-				Tcl_IoSetStringObj(lpNew, temp3, -1);
-				// append to front
-				if (Tcl_ListObjReplace(Interp, lpResult, 0, 0, 1, &lpNew) != TCL_OK)
+				else
 				{
-					return TCL_ERROR;
+					c = &temp3[lpMountPoint->dwPathLen-1];
+					c[1] = 0;
+					while (lpMountPoint)
+					{
+						*c = '/';
+						c -= lpMountPoint->dwName;
+						strncpy(c, lpMountPoint->szName, lpMountPoint->dwName);
+						c--;
+						lpMountPoint = lpMountPoint->lpParent;
+					}
+
+					if (!(lpNew = Tcl_NewObj())) return TCL_ERROR;
+					Tcl_IoSetStringObj(lpNew, temp3, -1);
+					// append to front
+					if (Tcl_ListObjReplace(Interp, lpResult, 0, 0, 1, &lpNew) != TCL_OK)
+					{
+						return TCL_ERROR;
+					}
 				}
 			}
 		}
@@ -2094,12 +2108,12 @@ DirError:
 			{
 				//  View context
 				tszData  = FindFileContext((BYTE)dwContextType, &lpFileInfo->Context);
-				if (tszData) sprintf(pBuffer, "%.*s", sizeof(pBuffer) / sizeof(TCHAR) - 1, tszData);
+				if (tszData) sprintf(pBuffer, "%.*s", (int)(sizeof(pBuffer) / sizeof(TCHAR) - 1), tszData);
 				iReturn  = TCL_OK;
 			}
 			else if (Objc == 5U && (tszData = Tcl_IoGetString(Objv[4], temp3, sizeof(temp3), 0)))
 			{
-				dwData  = _tcslen(tszData);
+				dwData  = (DWORD)_tcslen(tszData);
 				//  Update context
 				UpdateData.Uid  = lpFileInfo->Uid;
 				UpdateData.Gid  = lpFileInfo->Gid;
@@ -2451,7 +2465,7 @@ Tcl_ioMsg(LPTCL_INTERPRETER lpTclInterpreter,
 			return TCL_ERROR;
 		}
 
-		iLen = _tcslen(tszMsg);
+		iLen = (INT)_tcslen(tszMsg);
 		if (tszNewMsg = AllocateShared(0, "TCLMSG", iLen+1))
 		{
 			_tcscpy_s(tszNewMsg, iLen+1, tszMsg);
@@ -2616,7 +2630,7 @@ Tcl_ioServer(LPTCL_INTERPRETER lpTclInterpreter,
 		tszReason = NULL;
 		if (tszMsg)
 		{
-			u = _tcslen(tszMsg)+sizeof(*tszMsg);
+			u = (UINT)(_tcslen(tszMsg)+sizeof(*tszMsg));
 			tszReason = AllocateShared(NULL, "CloseMsg", u);
 			if (tszReason)
 			{
@@ -2938,7 +2952,7 @@ Tcl_iPuts(LPTCL_INTERPRETER lpTclInterpreter,
 
 	if (i > 0 && ( tszLine = (bRaw ? Tcl_GetString(Objv[i]) : Tcl_IoGetString(Objv[i], temp, sizeof(temp), 0)) ) )
 	{
-	  dwLine  = _tcslen(tszLine);
+	  dwLine  = (DWORD)_tcslen(tszLine);
 
       if (lpEventData->dwFlags & EVENT_SILENT)
       {
@@ -3004,7 +3018,7 @@ Tcl_MountFile(LPTCL_INTERPRETER lpTclInterpreter,
     if (! stricmp(szCommand, "OPEN"))
     {
       //  Copy string to work buffer
-      dwFileName  = _tcslen(tszArgument);
+      dwFileName  = (DWORD)_tcslen(tszArgument);
       if (dwFileName > _MAX_LONG_PATH) dwFileName  = _MAX_LONG_PATH;
       CopyMemory(tszFileName, tszArgument, dwFileName * sizeof(TCHAR));
       tszFileName[dwFileName]  = '\0';
@@ -3124,7 +3138,7 @@ Tcl_MountPoints(LPTCL_INTERPRETER lpTclInterpreter,
 	if (Objc > 1U &&
 		(tszArg = Tcl_IoGetString(Objv[1], temp1, sizeof(temp1), 0)))
 	{
-		dwFileName  = _tcslen(tszArg);
+		dwFileName  = (DWORD)_tcslen(tszArg);
 		if (dwFileName > _MAX_LONG_PATH) dwFileName  = _MAX_LONG_PATH;
 		CopyMemory(tszFileName, tszArg, dwFileName * sizeof(TCHAR));
 		tszFileName[dwFileName] = '\0';
@@ -3644,7 +3658,7 @@ Tcl_UserFile(LPTCL_INTERPRETER lpTclInterpreter,
       if (Objc == 3U &&
         (pUserFile = Tcl_IoGetString(Objv[2], temp, sizeof(temp), 0)))
       {
-        Out.len  = strlen(pUserFile);
+        Out.len  = (DWORD)strlen(pUserFile);
         if (lpTclData->dwFlags & TCL_USERFILE_LOCK &&
           (Out.buf = (PCHAR)Allocate("UserFile:Ascii2Bin", Out.len + 1)))
         {
@@ -3762,7 +3776,7 @@ Tcl_GroupFile(LPTCL_INTERPRETER lpTclInterpreter,
       if (Objc == 3U &&
         (pGroupFile = Tcl_IoGetString(Objv[2], temp, sizeof(temp), 0)))
       {
-        Out.len  = strlen(pGroupFile);
+        Out.len  = (DWORD)strlen(pGroupFile);
         if (lpTclData->dwFlags & TCL_GROUPFILE_LOCK &&
           (Out.buf = (PCHAR)Allocate("GroupFile:Ascii2Bin", Out.len + 1)))
         {
@@ -3843,7 +3857,7 @@ Tcl_Variable(LPTCL_INTERPRETER lpTclInterpreter,
     //  Set variable
     if (Objc == 4U)
     {
-      dwArgument  = strlen(szArgument);
+      dwArgument  = (DWORD)strlen(szArgument);
       lpVariable  = (LPTCL_VARIABLE)Allocate("GlobalVariable", sizeof(TCL_VARIABLE) + dwArgument);
       if (! lpVariable) return TCL_ERROR;
 	  lpVariable->szTclStr = NULL;
@@ -3887,7 +3901,7 @@ Tcl_Variable(LPTCL_INTERPRETER lpTclInterpreter,
     if (Objc == 3U)
     {
  	  szValue = NULL;
-      lpVariable  = (LPTCL_VARIABLE)((LONG)szArgument - offsetof(TCL_VARIABLE, szName));
+      lpVariable  = (LPTCL_VARIABLE)((ULONG_PTR)szArgument - offsetof(TCL_VARIABLE, szName));
       EnterCriticalSection(&csGlobalVariables);
       lpMemory  = bsearch(&lpVariable, lpGlobalVariables, dwGlobalVariables, sizeof(LPTCL_VARIABLE), (QUICKCOMPAREPROC) Tcl_VariableCompare);
 	  if (lpMemory)
@@ -3904,7 +3918,7 @@ Tcl_Variable(LPTCL_INTERPRETER lpTclInterpreter,
     //  Unset variable
     if (Objc == 3U)
     {
-      lpVariable  = (LPTCL_VARIABLE)((LONG)szArgument - offsetof(TCL_VARIABLE, szName));
+      lpVariable  = (LPTCL_VARIABLE)((ULONG_PTR)szArgument - offsetof(TCL_VARIABLE, szName));
       EnterCriticalSection(&csGlobalVariables);
       lpVariable  = (LPTCL_VARIABLE)QuickDelete(lpGlobalVariables, dwGlobalVariables, lpVariable,
 		                                        (QUICKCOMPAREPROC) Tcl_VariableCompare, NULL);
@@ -3979,7 +3993,7 @@ Tcl_AddVirtualEntry(LPTCL_INTERPRETER lpTclInterpreter,
 	{
 
 		tszName = Tcl_IoGetString(Objv[2], tszNameBuf, sizeof(tszNameBuf), 0);
-		if (!tszName || !(dwName = _tcslen(tszName)) || (dwName > _MAX_PWD))
+		if (!tszName || !(dwName = (DWORD)_tcslen(tszName)) || (dwName > _MAX_PWD))
 		{
 			Tcl_SetStringObj(lpResult, "Invalid Filename", -1);
 			goto FAILED;
@@ -4005,8 +4019,8 @@ Tcl_AddVirtualEntry(LPTCL_INTERPRETER lpTclInterpreter,
 			tszGroup = tszGroupBuf;
 			tszGroupBuf[0] = 0;
 		}
-		dwUser  = _tcslen(tszUser);
-		dwGroup = _tcslen(tszGroup);
+		dwUser  = (DWORD)_tcslen(tszUser);
+		dwGroup = (DWORD)_tcslen(tszGroup);
 	}
 	else
 	{
@@ -4034,7 +4048,7 @@ Tcl_AddVirtualEntry(LPTCL_INTERPRETER lpTclInterpreter,
 		if (!bVirtual && (Objc == dwArgs))
 		{
 			tszLink = Tcl_IoGetString(Objv[9], tszLinkBuf, sizeof(tszLinkBuf), 0);
-			if (!tszLink || ((dwLink = _tcslen(tszLink)) > _MAX_PWD))
+			if (!tszLink || ((dwLink = (DWORD)_tcslen(tszLink)) > _MAX_PWD))
 			{
 				Tcl_SetStringObj(lpResult, "Invalid Link Target", -1);
 				goto FAILED;
@@ -4053,21 +4067,21 @@ Tcl_AddVirtualEntry(LPTCL_INTERPRETER lpTclInterpreter,
 		else dwLink = 0;
 
 		tszName = Tcl_IoGetString(Objv[8], tszNameBuf, sizeof(tszNameBuf), 0);
-		if (!tszName || !(dwName = _tcslen(tszName)) || (dwName > _MAX_PWD))
+		if (!tszName || !(dwName = (DWORD)_tcslen(tszName)) || (dwName > _MAX_PWD))
 		{
 			Tcl_SetStringObj(lpResult, "Invalid Filename", -1);
 			goto FAILED;
 		}
 
 		tszUser = Tcl_IoGetString(Objv[5], tszUserBuf, sizeof(tszUserBuf), 0);
-		if (!tszUser || !(dwUser = _tcslen(tszUser)) || (dwUser > _MAX_PWD))
+		if (!tszUser || !(dwUser = (DWORD)_tcslen(tszUser)) || (dwUser > _MAX_PWD))
 		{
 			Tcl_SetStringObj(lpResult, "Invalid User", -1);
 			goto FAILED;
 		}
 
 		tszGroup = Tcl_IoGetString(Objv[6], tszGroupBuf, sizeof(tszGroupBuf), 0);
-		if (!tszGroup || !(dwGroup = _tcslen(tszGroup)) || (dwGroup > _MAX_PWD))
+		if (!tszGroup || !(dwGroup = (DWORD)_tcslen(tszGroup)) || (dwGroup > _MAX_PWD))
 		{
 			Tcl_SetStringObj(lpResult, "Invalid Group", -1);
 			goto FAILED;
@@ -4239,7 +4253,7 @@ Tcl_AddVirtualLink(LPTCL_INTERPRETER lpTclInterpreter,
 	}
 
 	tszLink = Tcl_IoGetString(Objv[2], tszLinkBuf, sizeof(tszLinkBuf), 0);
-	if (!tszLink || !(dwLink = _tcslen(tszLink)) || (dwLink > _MAX_PWD))
+	if (!tszLink || !(dwLink = (DWORD)_tcslen(tszLink)) || (dwLink > _MAX_PWD))
 	{
 		Tcl_SetStringObj(lpResult, "Invalid Link Target", -1);
 		goto FAILED;
@@ -4259,7 +4273,7 @@ Tcl_AddVirtualLink(LPTCL_INTERPRETER lpTclInterpreter,
 	if (Objc == 3)
 	{
 		tszName = Tcl_IoGetString(Objv[3], tszNameBuf, sizeof(tszNameBuf), 0);
-		if (!tszName || !(dwName = _tcslen(tszName)) || (dwName > _MAX_PWD))
+		if (!tszName || !(dwName = (DWORD)_tcslen(tszName)) || (dwName > _MAX_PWD))
 		{
 			Tcl_SetStringObj(lpResult, "Invalid Name", -1);
 			goto FAILED;
@@ -4441,7 +4455,7 @@ Tcl_ioTransferStats(LPTCL_INTERPRETER lpTclInterpreter,
 
 VOID Tcl_InterpDeleteProcCB(ClientData clientData, Tcl_Interp *interp)
 {
-	DWORD dwUniqueId = (DWORD) clientData;
+	DWORD dwUniqueId = (DWORD)(ULONG_PTR)clientData;
 
 	if (bDebugTclInterpreters)
 	{
@@ -4490,7 +4504,7 @@ VOID Tcl_InterpreterDestructor(VOID)
 
 VOID Tcl_ThreadExitProc(ClientData clientData)
 {
-	DWORD dwUniqueId = (DWORD) clientData;
+	DWORD dwUniqueId = (DWORD)(ULONG_PTR)clientData;
 
 	if (bDebugTclInterpreters)
 	{
@@ -4525,7 +4539,7 @@ LPTCL_INTERPRETER Tcl_GetInterpreter(BOOL bCreate)
 		return NULL;
 	}
 	
-	wsprintfA(pBuffer, "%u-%u-%u", GetCurrentThreadId(), (DWORD)GetCurrentFiber(), SafeGetTickCount64());
+	wsprintfA(pBuffer, "%u-%p-%I64u", GetCurrentThreadId(), GetCurrentFiber(), SafeGetTickCount64());
 	//  Create interpreter
 	lpTclInterpreter  = (LPTCL_INTERPRETER)Allocate("TCL:Interpreter", sizeof(TCL_INTERPRETER));
 	if (! lpTclInterpreter) return NULL;
@@ -4548,17 +4562,22 @@ LPTCL_INTERPRETER Tcl_GetInterpreter(BOOL bCreate)
 	}
 	lpTclInterpreter->dwUniqueId = InterlockedIncrement(&dwTclUniqueId);
 	lpTclInterpreter->dwConfigCounter = dwConfigCounter;
-	Tcl_CallWhenDeleted(lpTclInterpreter->lpInterp, Tcl_InterpDeleteProcCB, (VOID *) lpTclInterpreter->dwUniqueId);
+	Tcl_CallWhenDeleted(lpTclInterpreter->lpInterp, Tcl_InterpDeleteProcCB, (VOID *)(ULONG_PTR)lpTclInterpreter->dwUniqueId);
 	if (bDebugTclInterpreters)
 	{
 		Putlog(LOG_DEBUG, "Created TCL Interpreter #%d\r\n", lpTclInterpreter->dwUniqueId);
 	}
-	Tcl_CreateThreadExitHandler(Tcl_ThreadExitProc, (VOID *) lpTclInterpreter->dwUniqueId);
+	Tcl_CreateThreadExitHandler(Tcl_ThreadExitProc, (VOID *)(ULONG_PTR)lpTclInterpreter->dwUniqueId);
 
 	//  Initialize tcl interpreter
 	Tcl_SetVar(lpTclInterpreter->lpInterp, "tcl_interactive", "1", TCL_GLOBAL_ONLY);
 	Tcl_SetVar(lpTclInterpreter->lpInterp, "io_id", pBuffer, TCL_GLOBAL_ONLY);
-	Tcl_Init(lpTclInterpreter->lpInterp);
+	if (Tcl_Init(lpTclInterpreter->lpInterp))
+	{
+		Putlog(LOG_ERROR, _T("TCL: Tcl_Init failed for interpreter #%lu: %s\r\n"),
+		       lpTclInterpreter->dwUniqueId,
+		       Tcl_GetStringResult(lpTclInterpreter->lpInterp));
+	}
 
 	for (n = 0;TCL_Command[n].szCommand;n++)
 	{

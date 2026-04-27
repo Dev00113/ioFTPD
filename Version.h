@@ -2,9 +2,9 @@
 
 #include "include/GitVersion.h"
 
-#define IOFTPD_VERSION_MAJOR 7
-#define IOFTPD_VERSION_MINOR 10
-#define IOFTPD_VERSION_PATCH 1
+#define IOFTPD_VERSION_MAJOR 8
+#define IOFTPD_VERSION_MINOR 0
+#define IOFTPD_VERSION_PATCH 0
 #define IOFTPD_VERSION_BUILD IOFTPD_GIT_COMMIT_COUNT
 
 // String helpers

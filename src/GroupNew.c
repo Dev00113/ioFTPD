@@ -452,7 +452,7 @@ static INT Group_Open(LPGROUP_MODULE lpModule, LPTSTR tszGroupName, INT32 Gid)
 	  CloseHandle(hEvent);
 	  ERROR_RETURN(ERROR_GROUP_NOT_FOUND, DB_DELETED);
   }
-  dwLen = 9 + _tcslen(tszGroupName);
+  dwLen = 9 + (DWORD)_tcslen(tszGroupName);
   if (lpParentGroupFile->tszDefaultName = Allocate("DefaultGroupName", dwLen * sizeof(TCHAR)))
   {
 	  sprintf_s(lpParentGroupFile->tszDefaultName, dwLen, "Default=%s", tszGroupName);
@@ -885,7 +885,7 @@ INT32 CreateGroup(LPTSTR tszGroupName)
 
 	if (Gid == -1) return Gid;
 
-	dwLen = 9 + _tcslen(tszGroupName);
+	dwLen = 9 + (DWORD)_tcslen(tszGroupName);
 	lpParentGroupFile = GetParentGroupFileSafely(Gid);
 	if (!lpParentGroupFile)
 	{

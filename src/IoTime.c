@@ -47,12 +47,12 @@ INT Time_Compare(LPTIME_STRUCT lpStartTime, LPTIME_STRUCT lpStopTime)
 	{
 		dwTickCount	= SafeGetTickCount64();
 		//	Check timer 1wrapping
-		if (lpStartTime->i64TickCount > dwTickCount)
+		if (lpStartTime->i64TickCount > (INT64)dwTickCount)
 		{
 			//	Check timer2 wrapping
-			if (lpStopTime->i64TickCount < dwTickCount) return 1;
+			if (lpStopTime->i64TickCount < (INT64)dwTickCount) return 1;
 		}
-		else if (lpStopTime->i64TickCount > dwTickCount) return -1;
+		else if (lpStopTime->i64TickCount > (INT64)dwTickCount) return -1;
 
 		if (lpStartTime->i64TickCount > lpStopTime->i64TickCount) return 1;
 		if (lpStartTime->i64TickCount < lpStopTime->i64TickCount) return -1;

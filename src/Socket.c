@@ -244,7 +244,6 @@ WSAAsyncSelectTimerProc(LPIOSOCKET lpIoSocket,
 {
     PSELECT pSelect;
     BOOL    bQueueJob;
-    DWORD   dwError;
     SOCKET  socketToDisarm;
 
     UNREFERENCED_PARAMETER(lpTimer);
@@ -380,7 +379,6 @@ BOOL
 WSAAsyncSelectCancel(LPIOSOCKET lpIoSocket)
 {
     PSELECT pSelect;
-    DWORD   dwError;
     SOCKET  socketToDisarm;
 
     socketToDisarm = INVALID_SOCKET;
@@ -1266,6 +1264,7 @@ Socket_Init(BOOL bFirstInitialization)
 
     // Get windows version
     VersionInfo.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+#pragma warning(suppress: 4996)
     if (!GetVersionEx(&VersionInfo)) return FALSE;
 
     if ((tszSchedulerUpdateSpeed = Config_Get(&IniConfigFile, _TEXT("Network"), _TEXT("Scheduler_Update_Speed"), NULL, NULL)))

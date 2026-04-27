@@ -165,7 +165,7 @@ INT Redir_VFS_Add(LPEVENT_DATA lpEventData, IO_STRING *Args)
   tszFileMode  = GetStringIndexStatic(Args, 1);
   tszIdData  = GetStringIndexStatic(Args, 2);
   tszFileName  = GetStringRange(Args, 3, STR_END);
-  dwFileName  = _tcslen(tszFileName);
+  dwFileName  = (DWORD)_tcslen(tszFileName);
 
   //  Convert strings to integers
   UpdateData.Uid  = _tcstoul(tszIdData, &ptCheck, 10);
@@ -226,9 +226,9 @@ INT Redir_VFS_ChAttr(LPEVENT_DATA lpEventData, IO_STRING *Args)
 
   tszType    = GetStringIndexStatic(Args, 1);
   tszFileName  = GetStringIndexStatic(Args, 2);
-  dwFileName  = GetStringIndexLength(Args, 2);
+  dwFileName  = (DWORD)GetStringIndexLength(Args, 2);
   tszData    = GetStringIndexStatic(Args, 3);
-  dwData    = GetStringIndexLength(Args, 3);
+  dwData    = (DWORD)GetStringIndexLength(Args, 3);
   dwType    = _tcstoul(tszType, NULL, 10);
 
   //  Remove quotes from strings
@@ -344,7 +344,7 @@ INT Redir_Command(LPEVENT_DATA lpEventData, LPSTR szCommand)
     if (iTokens > 1)
     {
       //  Get command string
-      dwCommand  = GetStringIndexLength(&Arguments, 0);
+      dwCommand  = (DWORD)GetStringIndexLength(&Arguments, 0);
       tszCommand  = GetStringIndex(&Arguments, 0);
       _tcslwr(tszCommand);
 
@@ -612,7 +612,7 @@ BOOL Event_Init(BOOL bFirstInitialization)
   dwKeepAliveText = 0;
   if (tszKeepAliveText = Config_Get(&IniConfigFile, _T("Threads"), _T("Keep_Alive_Text"), NULL, NULL))
   {
-	  dwKeepAliveText = _tcslen(tszKeepAliveText);
+	  dwKeepAliveText = (DWORD)_tcslen(tszKeepAliveText);
   }
 
   return TRUE;
@@ -790,7 +790,7 @@ BOOL ExecuteAsync(LPEVENT_DATA lpEventData, IO_STRING *Arguments)
 						}
 						else
 						{
-							dwToCopy = pNewLine - &szBuffer[dwCurrentPos];
+							dwToCopy = (DWORD)(pNewLine - &szBuffer[dwCurrentPos]);
 							dwLen = dwToCopy + 1;
 							if (dwToCopy > 1 && pNewLine[-1] == _T('\r')) dwToCopy--;
 
@@ -1034,7 +1034,7 @@ RunEvent(LPEVENT_COMMAND lpCommandData)
   if (EventData.tszPrefix = lpCommandData->tszOutputPrefix)
   {
     EventData.dwFlags  |= EVENT_PREFIX;
-    EventData.dwPrefix  = _tcslen(EventData.tszPrefix);
+    EventData.dwPrefix  = (DWORD)_tcslen(EventData.tszPrefix);
   }
   if (EventData.lpBuffer = lpCommandData->lpOutputBuffer)
   {
@@ -1053,7 +1053,7 @@ RunEvent(LPEVENT_COMMAND lpCommandData)
   else if (lpCommandData->tszCommand[0] == _TEXT('%'))
   {
     //  Convert cookies
-    Message.size  = (_tcslen(lpCommandData->tszCommand) + 2) * sizeof(TCHAR);
+    Message.size  = (DWORD)((_tcslen(lpCommandData->tszCommand) + 2) * sizeof(TCHAR));
     Message.len    = 0;
     Message.dwType  = TYPE_CHAR;
     Message.buf    = (PCHAR)Allocate("Execute:CookieString", Message.size);

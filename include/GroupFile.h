@@ -27,7 +27,13 @@ typedef struct _GROUPFILE
 	CHAR	szDescription[128 + 1];	// Long description
 	CHAR	szVfsFile[_MAX_LONG_PATH + 1];	// Default VFS file
 
-	LPVOID	lpInternal;
-	LPVOID	lpParent;
+	LPVOID	lpInternal;		/* process-local — must NOT cross IPC boundary */
+	LPVOID	lpParent;		/* process-local — must NOT cross IPC boundary */
 
 } GROUPFILE, * LPGROUPFILE;
+
+// Number of bytes safe to copy across a process boundary.
+#define GROUPFILE_WIRE_SIZE  (sizeof(GROUPFILE) - 2 * sizeof(LPVOID))
+
+// Zero out process-local pointer fields before sending a GROUPFILE across a process boundary.
+#define GROUPFILE_Zero_Internal(pgf)  ((pgf)->lpInternal = NULL, (pgf)->lpParent = NULL)

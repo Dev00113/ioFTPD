@@ -49,18 +49,23 @@
 
 
 
-typedef struct _DC_MESSAGE
+// Wire-format IPC message header written by the sending process into shared memory.
+// All fields are fixed-width integers — no handles or pointers — so layout is
+// identical regardless of whether sender (32-bit) or receiver (64-bit) reads it.
+// Size: 4+4+4+4+8 = 24 bytes on both architectures (qwContextOffset is at offset 16,
+// which is already 8-byte aligned after four UINT32 fields).
+#define DC_MESSAGE_VERSION	2
+typedef struct _DC_MESSAGE_WIRE
 {
-	HANDLE		hEvent;
-	HANDLE		hObject;
-	DWORD		dwIdentifier;
-	DWORD		dwReturn;
-	LPVOID		lpMemoryBase;
-	LPVOID		lpContext;
+	UINT32		dwVersion;		// Must be DC_MESSAGE_VERSION
+	UINT32		dwIdentifier;	// Command identifier
+	UINT32		dwReturn;		// Result written by ioFTPD
+	UINT32		dwEventHandle;	// Event HANDLE value as seen by sending process (always ≤32-bit)
+	UINT64		qwContextOffset;// Byte offset from start of shared-mem view to context data
 
+} DC_MESSAGE_WIRE, *LPDC_MESSAGE_WIRE;
 
-} DC_MESSAGE, * LPDC_MESSAGE;
-
+static_assert(sizeof(DC_MESSAGE_WIRE) == 24, "DC_MESSAGE_WIRE must be exactly 24 bytes on all architectures");
 
 
 
@@ -84,12 +89,13 @@ typedef struct _EXCHANGE_REQUEST
 	HANDLE				  hEvent;		// Event handle
 	HANDLE				  hMemory;		// Memory object handle
 	ULONGLONG			  dwTickCount;	// When request was issued
+	DWORD				  dwMappedSize;	// Size of mapped region (from VirtualQuery), for bounds checking
 	LPDC_USERFILE_REQUEST lpUserFileReqList[2]; // linked list of open userfile requests
-	LPDC_MESSAGE		  lpMessage;
+	LPDC_MESSAGE_WIRE	  lpMessage;	// pointer into MapViewOfFile region
 
 	struct _EXCHANGE_REQUEST	*lpNext;
 	struct _EXCHANGE_REQUEST	*lpPrev;
-	
+
 } EXCHANGE_REQUEST, * LPEXCHANGE_REQUEST;
 
 
@@ -113,9 +119,9 @@ typedef struct _DC_NAMEID
 
 typedef struct _DC_ONLINEDATA
 {
-	ONLINEDATA	OnlineData;
-	INT			iOffset;
-	DWORD		dwSharedMemorySize;
+	ONLINEDATA_WIRE	OnlineData;		// wire format — identical layout on 32/64-bit
+	INT				iOffset;
+	DWORD			dwSharedMemorySize;
 
 } DC_ONLINEDATA, * LPDC_ONLINEDATA;
 
@@ -127,12 +133,11 @@ typedef struct _DC_VFS
 	UINT32			Gid;
 	DWORD			dwFileMode;
 	DWORD			dwBuffer;
-	PBYTE			pBuffer[1];
+	BYTE			pBuffer[];		// C99 flexible array member — variable-length byte data follows fixed fields
 
 } DC_VFS, * LPDC_VFS;
 
 
-#define SHELL		0
 #define FILEMAP		1
 
 VOID DataCopy_DeInit(VOID);

@@ -21,9 +21,12 @@
 
 #include <ioFTPD.h>
 
-static HMODULE				hShell32;
-static LPVOID				(WINAPI *MemoryLock)(HANDLE, DWORD);
-static BOOL					(WINAPI *MemoryUnlock)(LPVOID);
+// On x64, pointer fields shrink (LPTSTR 8→4) so the wire struct must be smaller.
+// On x86 the pointers were already 4 bytes so the UINT64 widening makes WIRE slightly larger — expected.
+#ifdef _M_X64
+static_assert(sizeof(ONLINEDATA_WIRE) < sizeof(ONLINEDATA), "ONLINEDATA_WIRE must be smaller than ONLINEDATA on x64");
+#endif
+
 static LPEXCHANGE_REQUEST	lpExchangeRequestList[2];
 static CRITICAL_SECTION		csExchangeRequestList;
 
@@ -38,6 +41,18 @@ BOOL FindExchangeRequest(LPEXCHANGE_REQUEST lpExchangeRequest)
 	{
 		if (lpSeek == lpExchangeRequest) return TRUE;
 	}
+	return FALSE;
+}
+
+
+// Returns TRUE if the memory region [lpBase, lpBase+dwBytes) contains at least one null byte.
+// Used to validate that string commands won't scan off the end of the shared mapping.
+static __inline BOOL SafeStringInRegion(LPCVOID lpBase, DWORD dwBytes)
+{
+	const BYTE *p = (const BYTE *)lpBase;
+	DWORD i;
+	for (i = 0; i < dwBytes; i++)
+		if (p[i] == '\0') return TRUE;
 	return FALSE;
 }
 
@@ -59,14 +74,15 @@ LPDC_USERFILE_REQUEST FindUserFileRequest(LPEXCHANGE_REQUEST lpReq, LPUSERFILE l
 
 
 static
-DWORD DataCopy_OnlineData(LPDC_ONLINEDATA lpdcOnlineData, LPVOID lpBase)
+DWORD DataCopy_OnlineData(LPDC_ONLINEDATA lpdcOnlineData, DWORD dwAvailableBytes)
 {
-	LPCLIENT		lpClient;
-	PONLINEDATA		lpOnlineData;
-	LPTSTR			tszRealPath, tszRealDataPath;
-	DWORD			dwReturn;
-	ULONGLONG       dwLastCount;
-	ULONGLONG		dwTickCount;
+	LPCLIENT			lpClient;
+	PONLINEDATA			lpSrc;
+	PONLINEDATA_WIRE	lpDst;
+	LPTSTR				tszRealPath, tszRealDataPath;
+	DWORD				dwReturn, dwRealPathChars, dwRealDataPathChars;
+	ULONGLONG			dwLastCount;
+	ULONGLONG			dwTickCount;
 
 	if (lpdcOnlineData->iOffset-- < -1) return (DWORD)-1;
 	//	Find next client
@@ -77,50 +93,62 @@ DWORD DataCopy_OnlineData(LPDC_ONLINEDATA lpdcOnlineData, LPVOID lpBase)
 		if (lpClient) break;
 	}
 
-	lpOnlineData	= &lpClient->Static;
-	//	Duplicate data
-	CopyMemory(&lpdcOnlineData->OnlineData, lpOnlineData, sizeof(ONLINEDATA));
-	tszRealPath	= (LPTSTR)(lpOnlineData->dwRealPath ? AllocateShared(lpOnlineData->tszRealPath, NULL, 0) : NULL);
-	tszRealDataPath	= (LPTSTR)(lpOnlineData->dwRealDataPath ? AllocateShared(lpOnlineData->tszRealDataPath, NULL, 0) : NULL);
-
+	lpSrc	= &lpClient->Static;
+	//	Acquire shared strings before releasing client lock
+	tszRealPath     = (LPTSTR)(lpSrc->dwRealPath     ? AllocateShared(lpSrc->tszRealPath,     NULL, 0) : NULL);
+	tszRealDataPath = (LPTSTR)(lpSrc->dwRealDataPath ? AllocateShared(lpSrc->tszRealDataPath, NULL, 0) : NULL);
 	dwLastCount = lpClient->dwTransferLastUpdated;
-
 	UnlockClient(lpdcOnlineData->iOffset);
 
-	lpOnlineData	= &lpdcOnlineData->OnlineData;
-	lpOnlineData->tszRealPath	= NULL;
-	lpOnlineData->tszRealDataPath	= NULL;
+	//	Serialize ONLINEDATA (internal) → ONLINEDATA_WIRE (cross-process fixed-width)
+	lpDst = &lpdcOnlineData->OnlineData;
+	lpDst->Uid              = lpSrc->Uid;
+	lpDst->dwFlags          = lpSrc->dwFlags;
+	memcpy(lpDst->tszServiceName, lpSrc->tszServiceName, sizeof(lpDst->tszServiceName));
+	memcpy(lpDst->tszAction,      lpSrc->tszAction,      sizeof(lpDst->tszAction));
+	lpDst->ulClientIp       = lpSrc->ulClientIp;
+	lpDst->usClientPort     = lpSrc->usClientPort;
+	memcpy(lpDst->szHostName, lpSrc->szHostName, sizeof(lpDst->szHostName));
+	memcpy(lpDst->szIdent,    lpSrc->szIdent,    sizeof(lpDst->szIdent));
+	memcpy(lpDst->tszVirtualPath, lpSrc->tszVirtualPath, sizeof(lpDst->tszVirtualPath));
+	lpDst->dwOnlineTime     = lpSrc->dwOnlineTime;
+	lpDst->dwIdleTickCount  = lpSrc->dwIdleTickCount;
+	lpDst->bTransferStatus  = lpSrc->bTransferStatus;
+	lpDst->usDeviceNum      = lpSrc->usDeviceNum;
+	lpDst->ulDataClientIp   = lpSrc->ulDataClientIp;
+	lpDst->usDataClientPort = lpSrc->usDataClientPort;
+	memcpy(lpDst->tszVirtualDataPath, lpSrc->tszVirtualDataPath, sizeof(lpDst->tszVirtualDataPath));
+	lpDst->qwBytesTransfered        = lpSrc->dwBytesTransfered;
+	lpDst->dwIntervalLength         = lpSrc->dwIntervalLength;
+	lpDst->i64TotalBytesTransfered  = lpSrc->i64TotalBytesTransfered;
 
-	if (lpOnlineData->bTransferStatus)
+	if (lpDst->bTransferStatus)
 	{
 		dwTickCount = SafeGetTickCount64();
 		dwTickCount = Time_DifferenceDW64(dwLastCount, dwTickCount);
 		if (dwTickCount > ZERO_SPEED_DELAY)
 		{
-			lpOnlineData->dwIntervalLength = 1; // so bytes/time doesn't generate an error
-			lpOnlineData->dwBytesTransfered = 0;
+			lpDst->dwIntervalLength  = 1;
+			lpDst->qwBytesTransfered = 0;
 		}
 	}
 
+	//	String data appended immediately after DC_ONLINEDATA in shared memory.
+	//	External tools find them at: (TCHAR*)(&lpdcOnlineData[1]) + 0 and + dwRealPathLen.
+	dwRealPathChars     = tszRealPath     ? lpSrc->dwRealPath     : 0;
+	dwRealDataPathChars = tszRealDataPath ? lpSrc->dwRealDataPath : 0;
+	lpDst->dwRealPathLen     = dwRealPathChars;
+	lpDst->dwRealDataPathLen = dwRealDataPathChars;
 
-	dwReturn	= (lpOnlineData->dwRealPath +
-		lpOnlineData->dwRealDataPath) * sizeof(TCHAR) + sizeof(ONLINEDATA) + sizeof(DC_MESSAGE);
-	if (dwReturn < lpdcOnlineData->dwSharedMemorySize)
+	dwReturn = (dwRealPathChars + dwRealDataPathChars) * sizeof(TCHAR) + sizeof(DC_ONLINEDATA) + sizeof(DC_MESSAGE_WIRE);
+	if (dwReturn < dwAvailableBytes)
 	{
 		if (tszRealPath)
-		{
-			lpOnlineData->tszRealPath	= (LPTSTR)&lpdcOnlineData[1];
-			CopyMemory(lpOnlineData->tszRealPath, tszRealPath, lpOnlineData->dwRealPath * sizeof(TCHAR));
-			lpOnlineData->tszRealPath	= (LPTSTR)(sizeof(DC_ONLINEDATA) + (ULONG)lpBase);
-		}
+			CopyMemory(&lpdcOnlineData[1], tszRealPath, dwRealPathChars * sizeof(TCHAR));
 		if (tszRealDataPath)
-		{
-			lpOnlineData->tszRealDataPath	= &((LPTSTR)&lpdcOnlineData[1])[lpOnlineData->dwRealPath];
-			CopyMemory(lpOnlineData->tszRealDataPath, tszRealDataPath, lpOnlineData->dwRealDataPath * sizeof(TCHAR));
-			lpOnlineData->tszRealDataPath	= (LPTSTR)(sizeof(DC_ONLINEDATA) + lpOnlineData->dwRealPath * sizeof(TCHAR) + (ULONG)lpBase);
-		}
+			CopyMemory((TCHAR *)&lpdcOnlineData[1] + dwRealPathChars, tszRealDataPath, dwRealDataPathChars * sizeof(TCHAR));
 		lpdcOnlineData->iOffset++;
-		dwReturn	= 0;
+		dwReturn = 0;
 	}
 	if (tszRealPath) FreeShared(tszRealPath);
 	if (tszRealDataPath) FreeShared(tszRealDataPath);
@@ -154,7 +182,7 @@ UserFile_Old2New(LPUSERFILE_OLD lpOld, LPUSERFILE lpNew)
 	memcpy(lpNew->AllDn, lpOld->AllDn, sizeof(lpOld->AllDn)); // 10 vs 25
 
 	memcpy(lpNew->AdminGroups, lpOld->AdminGroups, sizeof(lpOld->AdminGroups));
-	memcpy(lpNew->Groups, lpOld->Groups, sizeof(lpOld->AdminGroups));
+	memcpy(lpNew->Groups, lpOld->Groups, sizeof(lpOld->Groups));
 	memcpy(lpNew->Ip, lpOld->Ip, sizeof(lpOld->Ip));
 
 	lpNew->lpInternal = lpOld->lpInternal;
@@ -188,7 +216,7 @@ UserFile_New2Old(LPUSERFILE lpNew, LPUSERFILE_OLD lpOld)
 	memcpy(lpOld->AllDn, lpNew->AllDn, sizeof(lpOld->AllDn)); // 10 vs 25
 
 	memcpy(lpOld->AdminGroups, lpNew->AdminGroups, sizeof(lpOld->AdminGroups));
-	memcpy(lpOld->Groups, lpNew->Groups, sizeof(lpOld->AdminGroups));
+	memcpy(lpOld->Groups, lpNew->Groups, sizeof(lpOld->Groups));
 	memcpy(lpOld->Ip, lpNew->Ip, sizeof(lpOld->Ip));
 
 	lpOld->lpInternal = lpNew->lpInternal;
@@ -199,7 +227,7 @@ UserFile_New2Old(LPUSERFILE lpNew, LPUSERFILE_OLD lpOld)
 
 
 static
-DWORD DataCopy_Process(LPEXCHANGE_REQUEST lpRequest, LPDC_MESSAGE lpMessage)
+DWORD DataCopy_Process(LPEXCHANGE_REQUEST lpRequest, LPDC_MESSAGE_WIRE lpMessage)
 {
 	EVENT_COMMAND	Event;
 	LPFILEINFO		lpFileInfo;
@@ -210,52 +238,75 @@ DWORD DataCopy_Process(LPEXCHANGE_REQUEST lpRequest, LPDC_MESSAGE lpMessage)
 	LPDC_USERFILE_REQUEST lpUserFileReq;
 	LPUSERFILE      lpUserFile;
 
+	//	Reject mismatched protocol versions before touching any other fields
+	if (lpMessage->dwVersion != DC_MESSAGE_VERSION) return (DWORD)-1;
+
+	//	Bounds-check context offset against the actual mapped region size to prevent
+	//	an untrusted sending process from causing out-of-bounds pointer arithmetic
+	if (lpRequest->dwMappedSize < sizeof(DC_MESSAGE_WIRE) ||
+		lpMessage->qwContextOffset < sizeof(DC_MESSAGE_WIRE) ||
+		lpMessage->qwContextOffset >= (UINT64)lpRequest->dwMappedSize) return (DWORD)-1;
+
 	//	Process request
 	dwReturn	= (DWORD)-1;
-	lpBuffer	= (LPVOID)((ULONG)lpMessage->lpContext - (ULONG)lpMessage->lpMemoryBase + (ULONG)lpMessage);
+	lpBuffer	= (BYTE *)lpMessage + lpMessage->qwContextOffset;
+
+	//	Bytes available for context data (guaranteed > 0 by the bounds check above)
+	{
+	DWORD dwContextAvailable = lpRequest->dwMappedSize - (DWORD)lpMessage->qwContextOffset;
 
 	switch (lpMessage->dwIdentifier)
 	{
 	case DC_EXECUTE:
-		//	Execute script
+		//	Execute script — context is a null-terminated command string
+		if (!SafeStringInRegion(lpBuffer, dwContextAvailable)) break;
 		ZeroMemory(&Event, sizeof(EVENT_COMMAND));
 		Event.tszCommand	= (LPTSTR)lpBuffer;
 		dwReturn	= RunEvent(&Event);
 		break;
 	case DC_CREATE_USER:
 		//	Create new user
+		if (dwContextAvailable < sizeof(DC_NAMEID)) break;
 		dwReturn	= CreateUser(((LPDC_NAMEID)lpBuffer)->tszName, -1);
 		break;
 	case DC_RENAME_USER:
 		//	Rename user
+		if (dwContextAvailable < sizeof(DC_RENAME)) break;
 		dwReturn	= RenameUser(((LPDC_RENAME)lpBuffer)->tszName, ((LPDC_RENAME)lpBuffer)->tszNewName);
 		break;
 	case DC_DELETE_USER:
 		//	Delete existing user
+		if (dwContextAvailable < sizeof(DC_NAMEID)) break;
 		dwReturn	= DeleteUser(((LPDC_NAMEID)lpBuffer)->tszName);
 		break;
 	case DC_RENAME_GROUP:
 		//	Rename group
+		if (dwContextAvailable < sizeof(DC_RENAME)) break;
 		dwReturn	= RenameGroup(((LPDC_RENAME)lpBuffer)->tszName, ((LPDC_RENAME)lpBuffer)->tszNewName);
 		break;
 	case DC_CREATE_GROUP:
 		//	Create new group
+		if (dwContextAvailable < sizeof(DC_NAMEID)) break;
 		dwReturn	= CreateGroup(((LPDC_NAMEID)lpBuffer)->tszName);
 		break;
 	case DC_DELETE_GROUP:
 		//	Delete existing group
+		if (dwContextAvailable < sizeof(DC_NAMEID)) break;
 		dwReturn	= DeleteGroup(((LPDC_NAMEID)lpBuffer)->tszName);
 		break;
 	case DC_USER_TO_UID:
-		//	Convert user name to id
+		//	Convert user name to id — context is a null-terminated user name string
+		if (!SafeStringInRegion(lpBuffer, dwContextAvailable)) break;
 		dwReturn	= User2Uid((LPTSTR)lpBuffer);
 		break;
 	case DC_GROUP_TO_GID:
-		//	Convert group name to id
+		//	Convert group name to id — context is a null-terminated group name string
+		if (!SafeStringInRegion(lpBuffer, dwContextAvailable)) break;
 		dwReturn	= Group2Gid((LPTSTR)lpBuffer);
 		break;
 	case DC_UID_TO_USER:
 		//	Convert user id to name
+		if (dwContextAvailable < sizeof(DC_NAMEID)) break;
 		Id	= ((LPDC_NAMEID)lpBuffer)->Id;
 		if (Id < MAX_UID)
 		{
@@ -269,13 +320,14 @@ DWORD DataCopy_Process(LPEXCHANGE_REQUEST lpRequest, LPDC_MESSAGE lpMessage)
 		break;
 	case DC_GID_TO_GROUP:
 		//	Convert group id to name
+		if (dwContextAvailable < sizeof(DC_NAMEID)) break;
 		Id	= ((LPDC_NAMEID)lpBuffer)->Id;
 		if (Id < MAX_GID)
 		{
 			tszGroupName	= Gid2Group(Id);
 			if (tszGroupName)
 			{
-				//	Copy username to buffer
+				//	Copy group name to buffer
 				_tcscpy(((LPDC_NAMEID)lpBuffer)->tszName, tszGroupName);
 				dwReturn	= FALSE;
 			}
@@ -283,24 +335,34 @@ DWORD DataCopy_Process(LPEXCHANGE_REQUEST lpRequest, LPDC_MESSAGE lpMessage)
 		break;
 	case DC_NEW_USERFILE_OPEN:
 		//	Open userfile
+		if (dwContextAvailable < sizeof(USERFILE)) break;
 		if (((LPUSERFILE)lpBuffer)->Uid < 0 ||
 			((LPUSERFILE)lpBuffer)->Uid >= MAX_UID) break;
 		dwReturn	= UserFile_OpenPrimitive(((LPUSERFILE)lpBuffer)->Uid, (LPUSERFILE *)&lpBuffer, STATIC_SOURCE);
+		//	Zero process-local pointer fields before the caller reads the struct from shared memory
+		USERFILE_Zero_Internal((LPUSERFILE)lpBuffer);
 		break;
 	case DC_NEW_USERFILE_LOCK:
 		//	Lock userfile
+		if (dwContextAvailable < sizeof(USERFILE)) break;
 		dwReturn	= UserFile_Lock((LPUSERFILE *)&lpBuffer, STATIC_SOURCE);
+		USERFILE_Zero_Internal((LPUSERFILE)lpBuffer);
 		break;
 	case DC_NEW_USERFILE_UNLOCK:
 		//	Unlock userfile
+		if (dwContextAvailable < sizeof(USERFILE)) break;
 		dwReturn	= UserFile_Unlock((LPUSERFILE *)&lpBuffer, STATIC_SOURCE);
+		USERFILE_Zero_Internal((LPUSERFILE)lpBuffer);
 		break;
 	case DC_NEW_USERFILE_CLOSE:
 		//	Close userfile
+		if (dwContextAvailable < sizeof(USERFILE)) break;
 		dwReturn	= UserFile_Close((LPUSERFILE *)&lpBuffer, STATIC_SOURCE);
+		USERFILE_Zero_Internal((LPUSERFILE)lpBuffer);
 		break;
 	case DC_USERFILE_OPEN:
 		//	Open userfile
+		if (dwContextAvailable < sizeof(USERFILE_OLD)) break;
 		if (((LPUSERFILE_OLD)lpBuffer)->Uid < 0 ||
 			((LPUSERFILE_OLD)lpBuffer)->Uid >= MAX_UID) break;
 		lpUserFileReq = Allocate("DC_USERFILE_REQUEST", sizeof(DC_USERFILE_REQUEST));
@@ -309,7 +371,7 @@ DWORD DataCopy_Process(LPEXCHANGE_REQUEST lpRequest, LPDC_MESSAGE lpMessage)
 		// OK, this needs to use the OLD userfile structure...
 		lpUserFile = &lpUserFileReq->UserFile;
 		dwReturn   = UserFile_OpenPrimitive(((LPUSERFILE_OLD)lpBuffer)->Uid, &lpUserFile, STATIC_SOURCE);
-		if (dwReturn) 
+		if (dwReturn)
 		{
 			Free(lpUserFileReq);
 			break;
@@ -318,6 +380,9 @@ DWORD DataCopy_Process(LPEXCHANGE_REQUEST lpRequest, LPDC_MESSAGE lpMessage)
 		APPENDLIST(lpUserFileReq, lpRequest->lpUserFileReqList);
 
 		UserFile_New2Old(&lpUserFileReq->UserFile, lpBuffer);
+		//	Ensure process-local pointers are never visible to the external tool
+		((LPUSERFILE_OLD)lpBuffer)->lpInternal = NULL;
+		((LPUSERFILE_OLD)lpBuffer)->lpParent   = NULL;
 		break;
 	case DC_USERFILE_LOCK:
 		//	Lock userfile
@@ -364,29 +429,41 @@ DWORD DataCopy_Process(LPEXCHANGE_REQUEST lpRequest, LPDC_MESSAGE lpMessage)
 		break;
 	case DC_GROUPFILE_OPEN:
 		//	Open groupfile
-		if (((LPUSERFILE)lpBuffer)->Uid < 0 ||
-			((LPUSERFILE)lpBuffer)->Uid >= MAX_GID) break;
+		if (dwContextAvailable < sizeof(GROUPFILE)) break;
+		if (((LPGROUPFILE)lpBuffer)->Gid < 0 ||
+			((LPGROUPFILE)lpBuffer)->Gid >= MAX_GID) break;
 		dwReturn	= GroupFile_OpenPrimitive(((LPGROUPFILE)lpBuffer)->Gid, (LPGROUPFILE *)&lpBuffer, STATIC_SOURCE);
+		GROUPFILE_Zero_Internal((LPGROUPFILE)lpBuffer);
 		break;
 	case DC_GROUPFILE_LOCK:
 		//	Lock groupfile
+		if (dwContextAvailable < sizeof(GROUPFILE)) break;
 		dwReturn	= GroupFile_Lock((LPGROUPFILE *)&lpBuffer, STATIC_SOURCE);
+		GROUPFILE_Zero_Internal((LPGROUPFILE)lpBuffer);
 		break;
 	case DC_GROUPFILE_UNLOCK:
 		//	Unlock groupfile
+		if (dwContextAvailable < sizeof(GROUPFILE)) break;
 		dwReturn	= GroupFile_Unlock((LPGROUPFILE *)&lpBuffer, STATIC_SOURCE);
+		GROUPFILE_Zero_Internal((LPGROUPFILE)lpBuffer);
 		break;
 	case DC_GROUPFILE_CLOSE:
 		//	Close groupfile
+		if (dwContextAvailable < sizeof(GROUPFILE)) break;
 		dwReturn	= GroupFile_Close((LPGROUPFILE *)&lpBuffer, STATIC_SOURCE);
+		GROUPFILE_Zero_Internal((LPGROUPFILE)lpBuffer);
 		break;
 	case DC_DIRECTORY_MARKDIRTY:
-		//	Mark directory as dirty
+		//	Mark directory as dirty — context is a null-terminated path string
+		if (!SafeStringInRegion(lpBuffer, dwContextAvailable)) break;
 		tszFileName	= (LPTSTR)lpBuffer;
 		dwReturn	= MarkDirectory(tszFileName);
 		break;
 	case DC_FILEINFO_READ:
 		//	Get fileinfo
+		if (dwContextAvailable < sizeof(DC_VFS) + sizeof(TCHAR)) break;
+		if (!SafeStringInRegion(((LPDC_VFS)lpBuffer)->pBuffer,
+			dwContextAvailable - sizeof(DC_VFS))) break;
 		tszFileName	= (LPTSTR)((LPDC_VFS)lpBuffer)->pBuffer;
 		lpContext	= (LPVOID)((LPDC_VFS)lpBuffer)->pBuffer;
 
@@ -402,12 +479,17 @@ DWORD DataCopy_Process(LPEXCHANGE_REQUEST lpRequest, LPDC_MESSAGE lpMessage)
 			if (lpFileInfo->dwFileAttributes & FILE_ATTRIBUTE_IOFTPD &&
 				lpFileInfo->Context.dwData)
 			{
-				if (((LPDC_VFS)lpBuffer)->dwBuffer < lpFileInfo->Context.dwData)
+				if (((LPDC_VFS)lpBuffer)->dwBuffer >= lpFileInfo->Context.dwData)
 				{
-					((LPDC_VFS)lpBuffer)->dwBuffer	= lpFileInfo->Context.dwData;
+					// Buffer is large enough — copy context data and signal success
 					CopyMemory(lpContext, lpFileInfo->Context.lpData, lpFileInfo->Context.dwData);
 				}
-				else dwReturn	= lpFileInfo->Context.dwData;
+				else
+				{
+					// Buffer too small — return required size so caller can retry with larger buffer
+					((LPDC_VFS)lpBuffer)->dwBuffer	= lpFileInfo->Context.dwData;
+					dwReturn	= lpFileInfo->Context.dwData;
+				}
 			}
 			else ((LPDC_VFS)lpBuffer)->dwBuffer	= 0;
 			CloseFileInfo(lpFileInfo);
@@ -415,6 +497,9 @@ DWORD DataCopy_Process(LPEXCHANGE_REQUEST lpRequest, LPDC_MESSAGE lpMessage)
 		break;
 	case DC_FILEINFO_WRITE:
 		//	Get new data
+		if (dwContextAvailable < sizeof(DC_VFS) + sizeof(TCHAR)) break;
+		if (!SafeStringInRegion(((LPDC_VFS)lpBuffer)->pBuffer,
+			dwContextAvailable - sizeof(DC_VFS))) break;
 		UpdateData.Uid	= ((LPDC_VFS)lpBuffer)->Uid;
 		UpdateData.Gid	= ((LPDC_VFS)lpBuffer)->Gid;
 		UpdateData.dwFileMode	= ((LPDC_VFS)lpBuffer)->dwFileMode;
@@ -424,9 +509,14 @@ DWORD DataCopy_Process(LPEXCHANGE_REQUEST lpRequest, LPDC_MESSAGE lpMessage)
 			UpdateData.dwFileMode <= 0777)
 		{
 			tszFileName	= (LPTSTR)((LPDC_VFS)lpBuffer)->pBuffer;
-			dwFileName	= _tcslen(tszFileName);
-			UpdateData.Context.lpData	= (LPVOID)&((LPDC_VFS)lpBuffer)->pBuffer[(dwFileName + 1) * sizeof(TCHAR)];
-			UpdateData.Context.dwData	= ((LPDC_VFS)lpBuffer)->dwBuffer - (dwFileName + 1) * sizeof(TCHAR);
+			dwFileName	= (DWORD)_tcslen(tszFileName);
+			{
+				DWORD dwFileNameBytes = (dwFileName + 1) * sizeof(TCHAR);
+				// Guard against DWORD underflow if dwBuffer is smaller than the filename
+				if (((LPDC_VFS)lpBuffer)->dwBuffer < dwFileNameBytes) break;
+				UpdateData.Context.lpData	= (LPVOID)&((LPDC_VFS)lpBuffer)->pBuffer[dwFileNameBytes];
+				UpdateData.Context.dwData	= ((LPDC_VFS)lpBuffer)->dwBuffer - dwFileNameBytes;
+			}
 
 			if (GetFileInfo(tszFileName, &lpFileInfo))
 			{
@@ -440,9 +530,11 @@ DWORD DataCopy_Process(LPEXCHANGE_REQUEST lpRequest, LPDC_MESSAGE lpMessage)
 		}
 		break;
 	case DC_GET_ONLINEDATA:
-		dwReturn	= DataCopy_OnlineData((LPDC_ONLINEDATA)lpBuffer, lpMessage->lpContext);
+		if (dwContextAvailable < sizeof(DC_ONLINEDATA)) break;
+		dwReturn = DataCopy_OnlineData((LPDC_ONLINEDATA)lpBuffer, dwContextAvailable);
 		break;
 	}
+	} // dwContextAvailable scope
 	return dwReturn;
 }
 
@@ -478,15 +570,8 @@ BOOL DataCopy_Free(LPEXCHANGE_REQUEST lpRequest, BOOL bNoCheck)
 	}
 
 	//	Free resources associated with request
-	switch (lpRequest->wType)
-	{
-	case SHELL:
-		MemoryUnlock(lpRequest->lpMessage);
-		break;
-	case FILEMAP:
+	if (lpRequest->wType == FILEMAP)
 		UnmapViewOfFile(lpRequest->lpMessage);
-		break;
-	}
 	if (lpRequest->hEvent) CloseHandle(lpRequest->hEvent);
 	if (lpRequest->hMemory != INVALID_HANDLE_VALUE) CloseHandle(lpRequest->hMemory);
 	for(lpUserFileReq = lpRequest->lpUserFileReqList[HEAD] ; lpUserFileReq ; lpUserFileReq=lpNext)
@@ -504,9 +589,9 @@ BOOL DataCopy_Free(LPEXCHANGE_REQUEST lpRequest, BOOL bNoCheck)
 
 
 static
-LRESULT DataCopy_Allocate(DWORD dwProcessId, HANDLE hSharedMemory, DWORD dwType)
+LRESULT DataCopy_Allocate(DWORD dwProcessId, HANDLE hSharedMemory)
 {
-	LPDC_MESSAGE		lpMessage;
+	LPDC_MESSAGE_WIRE	lpMessage;
 	LPEXCHANGE_REQUEST	lpRequest, lpGhost[2], lpSeek;
 	HANDLE				hProcess;
 	BOOL				bReturn;
@@ -516,33 +601,46 @@ LRESULT DataCopy_Allocate(DWORD dwProcessId, HANDLE hSharedMemory, DWORD dwType)
 	if (! lpRequest) return 0;
 
 	//	Open process
-	hProcess	= OpenProcess(PROCESS_ALL_ACCESS, FALSE, dwProcessId);
+	hProcess	= OpenProcess(PROCESS_DUP_HANDLE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, dwProcessId);
 	if (hProcess)
 	{
+		//	Reject 32-bit senders when ioFTPD is 64-bit.  The WM_DATACOPY_FILEMAP LRESULT
+		//	is a 64-bit heap pointer that WoW64 truncates to 32 bits before returning it to
+		//	the 32-bit caller.  When the caller echoes the truncated value back via WM_SHMEM,
+		//	FindExchangeRequest fails and the IPC call silently never completes.
+		//	32-bit external tools must be rebuilt as 64-bit to work with ioFTPD v8+.
+#ifdef _M_X64
+		{
+			BOOL bIs32Bit = FALSE;
+			if (IsWow64Process(hProcess, &bIs32Bit) && bIs32Bit)
+			{
+				Putlog(LOG_ERROR, _T("DataCopy: rejected IPC request from 32-bit process PID=%lu — rebuild the tool as 64-bit.\r\n"), dwProcessId);
+				CloseHandle(hProcess);
+				Free(lpRequest);
+				return 0;
+			}
+		}
+#endif
 		lpMessage	= NULL;
 		lpRequest->hEvent	= NULL;
 		lpRequest->hMemory	= INVALID_HANDLE_VALUE;
-		//	Get access to shared allocation
-		switch (dwType)
+		//	Get access to shared allocation via file-mapped memory
+		bReturn	= DuplicateHandle(hProcess, hSharedMemory,
+			GetCurrentProcess(), &lpRequest->hMemory, 0, FALSE, DUPLICATE_SAME_ACCESS);
+		if (bReturn) lpMessage	= (LPDC_MESSAGE_WIRE)MapViewOfFile(lpRequest->hMemory, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+		if (lpMessage)
 		{
-		case SHELL:
-			lpMessage = (LPDC_MESSAGE)MemoryLock(hSharedMemory, dwProcessId);
-			if (lpMessage) bReturn	= TRUE;
-			break;
-		case FILEMAP:
-			bReturn	= DuplicateHandle(hProcess, hSharedMemory,
-				GetCurrentProcess(), &lpRequest->hMemory, 0, FALSE, DUPLICATE_SAME_ACCESS);
-			if (bReturn) lpMessage	= MapViewOfFile(lpRequest->hMemory, FILE_MAP_ALL_ACCESS, 0, 0, 0);
-			break;
-		default:
-			bReturn	= FALSE;
+			MEMORY_BASIC_INFORMATION mbi;
+			lpRequest->dwMappedSize = (VirtualQuery(lpMessage, &mbi, sizeof(mbi)) == sizeof(mbi))
+				? (DWORD)min(mbi.RegionSize, (SIZE_T)MAXDWORD) : 0;
 		}
 
-		//	Duplicate event handle
+		//	Duplicate event handle.  dwEventHandle is the raw handle value from the sending
+		//	process; Windows handles are always ≤32-bit so UINT32 holds them safely.
 		if (lpMessage &&
-			(lpMessage->hEvent && lpMessage->hEvent != INVALID_HANDLE_VALUE))
+			(lpMessage->dwEventHandle != 0 && lpMessage->dwEventHandle != 0xFFFFFFFFU))
 		{
-			bReturn	= DuplicateHandle(hProcess, lpMessage->hEvent,
+			bReturn	= DuplicateHandle(hProcess, (HANDLE)(UINT_PTR)lpMessage->dwEventHandle,
 				GetCurrentProcess(), &lpRequest->hEvent, 0, FALSE, DUPLICATE_SAME_ACCESS);
 		}
 		CloseHandle(hProcess);
@@ -550,7 +648,7 @@ LRESULT DataCopy_Allocate(DWORD dwProcessId, HANDLE hSharedMemory, DWORD dwType)
 		if (bReturn)
 		{
 			lpRequest->wStatus	= ER_AVAILABLE;
-			lpRequest->wType	= (WORD)dwType;
+			lpRequest->wType	= FILEMAP;
 			lpRequest->lpMessage	= lpMessage;
 			lpRequest->dwTickCount	= SafeGetTickCount64();
 			lpRequest->lpUserFileReqList[HEAD] = NULL;
@@ -590,15 +688,7 @@ LRESULT DataCopy_Allocate(DWORD dwProcessId, HANDLE hSharedMemory, DWORD dwType)
 		}
 
 		//	Free resources
-		switch (dwType)
-		{
-		case SHELL:
-			if (lpMessage) MemoryUnlock(lpMessage);
-			break;
-		case FILEMAP:
-			if (lpMessage) UnmapViewOfFile(lpMessage);
-			break;
-		}
+		if (lpMessage) UnmapViewOfFile(lpMessage);
 		if (lpRequest->hEvent) CloseHandle(lpRequest->hEvent);
 		if (lpRequest->hMemory != INVALID_HANDLE_VALUE) CloseHandle(lpRequest->hMemory);
 	}
@@ -613,12 +703,12 @@ static
 LRESULT WindowMessage_DataExchange(WPARAM wParam, LPARAM lParam)
 {
 	LPEXCHANGE_REQUEST	lpRequest;
-	register DWORD		dwTickCount;
+	ULONGLONG			dwTickCount;
 	BOOL				bFree;
 
 
 	lpRequest	= (LPEXCHANGE_REQUEST)lParam;
-	dwTickCount	= GetTickCount();
+	dwTickCount	= SafeGetTickCount64();
 
 	//	Validate request, and update position & status
 	EnterCriticalSection(&csExchangeRequestList);
@@ -639,7 +729,7 @@ LRESULT WindowMessage_DataExchange(WPARAM wParam, LPARAM lParam)
 		lpRequest->lpMessage->dwReturn	= DataCopy_Process(lpRequest, lpRequest->lpMessage);
 
 		bFree	= FALSE;
-		dwTickCount	= GetTickCount();
+		dwTickCount	= SafeGetTickCount64();
 		//	Update status and position
 		EnterCriticalSection(&csExchangeRequestList);
 		DELETELIST(lpRequest, lpExchangeRequestList);
@@ -680,28 +770,21 @@ LRESULT WindowMessage_FreeMemory(WPARAM wParam, LPARAM lParam)
 }
 
 static
-LRESULT WindowMessage_ShellAlloc(WPARAM wParam, LPARAM lParam)
-{
-	if (! MemoryLock || ! MemoryUnlock) return 0;
-	return DataCopy_Allocate((DWORD)wParam, (HANDLE)lParam, SHELL);
-}
-
-static
 LRESULT WindowMessage_FileMap(WPARAM wParam, LPARAM lParam)
 {
-	return DataCopy_Allocate((DWORD)wParam, (HANDLE)lParam, FILEMAP);
+	return DataCopy_Allocate((DWORD)wParam, (HANDLE)lParam);
 }
 
 static
 LRESULT WindowMessage_KillUser(WPARAM wParam, LPARAM lParam)
 {
-	return KillUser(wParam);
+	return KillUser((UINT32)wParam);
 }
 
 static
 LRESULT WindowMessage_KickUser(WPARAM wParam, LPARAM lParam)
 {
-	return KickUser(lParam);
+	return KickUser((INT)lParam);
 }
 
 
@@ -719,26 +802,14 @@ BOOL DataCopy_Init(BOOL bFirstInitialization)
 	InstallMessageHandler(WM_PID, WindowMessage_ProcessId, TRUE, FALSE);
 	InstallMessageHandler(WM_PHANDLE, WindowMessage_ProcessHandle, TRUE, FALSE);
 	InstallMessageHandler(WM_DATACOPY_FREE, WindowMessage_FreeMemory, TRUE, FALSE);
-	InstallMessageHandler(WM_DATACOPY_SHELLALLOC, WindowMessage_ShellAlloc, FALSE, FALSE);
 	InstallMessageHandler(WM_DATACOPY_FILEMAP, WindowMessage_FileMap, FALSE, FALSE);
 	InstallMessageHandler(WM_SHMEM, WindowMessage_DataExchange, FALSE, FALSE);
 	InstallMessageHandler(WM_KICK, WindowMessage_KickUser, FALSE, FALSE);
 	InstallMessageHandler(WM_KILL, WindowMessage_KillUser, FALSE, FALSE);
 
-	//	Load shell library
-	hShell32	= LoadLibrary(_TEXT("shell32.dll"));
 	lpExchangeRequestList[HEAD]	= NULL;
 	lpExchangeRequestList[TAIL]	= NULL;
-
-	//	Initialize shared memory routines
-	if (hShell32)
-	{
-		MemoryLock	= (LPVOID (WINAPI *)(HANDLE, DWORD))GetProcAddress(hShell32, _TEXT("SHLockShared"));
-		if (! MemoryLock) MemoryLock	= (LPVOID (WINAPI *)(HANDLE, DWORD))GetProcAddress(hShell32, (LPCSTR)521);
-		MemoryUnlock	= (BOOL (WINAPI *)(LPVOID))GetProcAddress(hShell32, _TEXT("SHUnlockShared"));
-		if (! MemoryUnlock) MemoryUnlock	= (BOOL (WINAPI *)(LPVOID))GetProcAddress(hShell32, (LPCSTR)522);
-	}
-	return InitializeCriticalSectionAndSpinCount(&csExchangeRequestList, 100);;
+	return InitializeCriticalSectionAndSpinCount(&csExchangeRequestList, 100);
 }
 
 
@@ -753,6 +824,5 @@ VOID DataCopy_DeInit(VOID)
 		DataCopy_Free(lpSeek, TRUE);
 	}
 
-	if (hShell32) FreeLibrary(hShell32);
 	DeleteCriticalSection(&csExchangeRequestList);
 }

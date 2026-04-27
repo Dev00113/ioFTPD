@@ -706,7 +706,7 @@ WORD FindMessageVariable(LPTSTR tszName, DWORD dwName, BOOL bArgs, LPBYTE lpType
 
     if (lpType) lpType[0] = (BYTE)((LPMESSAGE_VARIABLE*)lpResult)[0]->dwType;
 
-    return ((LPMESSAGE_VARIABLE*)lpResult) - lpMessageVariable;
+    return (WORD)(((LPMESSAGE_VARIABLE*)lpResult) - lpMessageVariable);
 }
 
 
@@ -830,7 +830,7 @@ BOOL InstallMessageVariable(LPTSTR tszName, LPVOID AllocProc,
     va_list             Arguments;
     DWORD               dwName;
 
-    if (!tszName || !(dwName = _tcslen(tszName)) ||
+    if (!tszName || !(dwName = (DWORD)_tcslen(tszName)) ||
         !AllocProc || (dwMessageVariables == (USHORT)-1)) return TRUE;
 
     if (dwMessageVariables == dwMessageVariablesAllocated)

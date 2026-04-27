@@ -191,7 +191,7 @@ BOOL DeleteIoTimer(LPTIMER lpTimer)
 	else
 	{
 		//	Calculate number of bytes to move
-		dwBytesToMove	= (ULONG)&lpTimerList[--dwTimerListItems] - (ULONG)lpResult;
+		dwBytesToMove	= (ULONG)((ULONG_PTR)&lpTimerList[--dwTimerListItems] - (ULONG_PTR)lpResult);
 		//	Remove item from list
 		MoveMemory(lpResult, &lpResult[1], dwBytesToMove);
 	}

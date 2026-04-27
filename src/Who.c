@@ -665,7 +665,7 @@ LPTSTR Admin_Who(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRING Args)
 
 				// Store the name into the temporary buffer
 				lpNext->dwNameIndex = TempBuf.len;
-				Put_Buffer(&TempBuf, tszName, (_tcslen(tszName) + 1) * sizeof(TCHAR));
+				Put_Buffer(&TempBuf, tszName, (DWORD)((_tcslen(tszName) + 1) * sizeof(TCHAR)));
 
 				// Compile the message line and store its offset and length
 				lpNext->dwLineIndex = TempBuf.len;

@@ -273,7 +273,7 @@ VirtualDirLoad(MOUNTFILE hMountFile, LPVIRTUALDIREVENT lpVirtualDirEvent, LPSTR 
 	LPSTR tszExistsNum[] = { "0" , "1" };
 	LPSTR tszExists;
 
-	dwLen = strlen(szPath);
+	dwLen = (DWORD)strlen(szPath);
 	if ((dwLen > _MAX_PWD) || (dwLen < 2) || !hMountFile->lpFtpUser) return NULL;
 	if (szPath[dwLen-1] == '/')
 	{
@@ -348,7 +348,7 @@ VirtualDirLoad(MOUNTFILE hMountFile, LPVIRTUALDIREVENT lpVirtualDirEvent, LPSTR 
 		!stricmp(lpVirtualTemp->lpVirtualInfoArray[0]->tszName, "||RESOLVED||") && lpVirtualTemp->lpVirtualInfoArray[0]->tszLink )
 	{
 		// we resolved the path to a link instead of a dir listing
-		dwLen = strlen(lpVirtualTemp->lpVirtualInfoArray[0]->tszLink);
+		dwLen = (DWORD)strlen(lpVirtualTemp->lpVirtualInfoArray[0]->tszLink);
 		if (!lpVirtualDir)
 		{
 			lpVirtualDir = lpVirtualTemp;
@@ -415,10 +415,10 @@ LPMOUNT_TABLE PWD_GetTable(LPSTR szVirtualPath, MOUNTFILE hMountFile)
 		if (! (pSlash = strchr(pLast, '/')))
 		{
 			bShouldLoop	= FALSE;
-			dwItem		= strlen(pLast);
+			dwItem		= (DWORD)strlen(pLast);
 			pSlash		= &pLast[dwItem];
 		}
-		else dwItem	= pSlash - pLast;
+		else dwItem	= (DWORD)(pSlash - pLast);
 
 		for (i = 0;i < lpTable->dwMountPoints;i++)
 		{
@@ -461,10 +461,10 @@ PWD_IsMountPoint(LPSTR szVirtualPath, MOUNTFILE hMountFile)
 		if (! (pSlash = strchr(pLast, '/')))
 		{
 			bShouldLoop	= FALSE;
-			dwItem		= strlen(pLast);
+			dwItem		= (DWORD)strlen(pLast);
 			pSlash		= &pLast[dwItem];
 		}
-		else dwItem	= pSlash - pLast;
+		else dwItem	= (DWORD)(pSlash - pLast);
 
 		for (i = 0;i < lpTable->dwMountPoints;i++)
 		{
@@ -550,14 +550,14 @@ LPSTR PWD_Resolve(LPSTR szVirtualPath, MOUNTFILE hMountFile, LPMOUNT_DATA Data, 
 			if (! (Slash = strchr(Last, '/')))
 			{
 				//	End of string reached
-				Length	= strlen(Last);
+				Length	= (UINT)strlen(Last);
 				Slash	= PwdEnd = &Last[Length];
 				lLength += Length;
 			}
 			else
 			{
 				//	Slash found
-				Length	= Slash - Last;
+				Length	= (UINT)(Slash - Last);
 				lLength += Length + 1;
 			}
 			vLength += Length;
@@ -618,7 +618,7 @@ LPSTR PWD_Resolve(LPSTR szVirtualPath, MOUNTFILE hMountFile, LPMOUNT_DATA Data, 
 		}
 
 		//	Calculate length of string end part
-		lLength	= (PwdEnd ? PwdEnd - PwdBest : strlen(PwdBest));
+		lLength	= (UINT)(PwdEnd ? PwdEnd - PwdBest : strlen(PwdBest));
 
 		while (lLength > 0 && PwdBest[lLength - 1] == '/') lLength--;
 
@@ -727,7 +727,7 @@ VOID PWD_Zero(PVIRTUALPATH VirtualPath)
 VOID PWD_Set(PVIRTUALPATH VirtualPath, LPTSTR tszPath)
 {
 	//	Reset virtual path
-	VirtualPath->Symlen = VirtualPath->len = _tcslen(tszPath);
+	VirtualPath->Symlen = VirtualPath->len = (DWORD)_tcslen(tszPath);
 	if (VirtualPath->len > _MAX_PWD)
 	{
 		VirtualPath->Symlen = VirtualPath->len = _MAX_PWD;
@@ -897,13 +897,13 @@ LPTSTR PWD_CWD2(LPUSERFILE lpUserFile, PVIRTUALPATH Pwd, LPTSTR tszChangeTo, MOU
 		{
 			//	End of string reached
 			bStringEnd	= TRUE;
-			dwPathItem	= _tcslen(tszChangeTo);
+			dwPathItem	= (DWORD)_tcslen(tszChangeTo);
 			tpSlash		= &tszChangeTo[dwPathItem];
 		}
 		else
 		{
 			//	Calculate length
-			dwPathItem	= tpSlash - tszChangeTo;
+			dwPathItem	= (DWORD)(tpSlash - tszChangeTo);
 			//	Find first non '/' character
 			while ((++tpSlash)[0] == _TEXT('/'));
 			//	Check for end of string
@@ -1102,10 +1102,10 @@ LPTSTR PWD_CWD2(LPUSERFILE lpUserFile, PVIRTUALPATH Pwd, LPTSTR tszChangeTo, MOU
 							VirtualPath.Symbolic[VirtualPath.Symlen]   = 0;
 						}
 						//	Handle symbolic link
-						if (tszLink && (dwLink = _tcslen(tszLink)) > 0 &&
+						if (tszLink && (dwLink = (DWORD)_tcslen(tszLink)) > 0 &&
 							(! (dwFlags & TYPE_LINK) || ! bStringEnd))
 						{
-							dwLen	= _tcslen(tpSlash);
+							dwLen	= (DWORD)_tcslen(tpSlash);
 							tszNewTemp = tszTemp = (LPTSTR)Allocate("PWD:Link", (dwLen + dwLink + 4) * sizeof(TCHAR));
 							if (tszTemp)
 							{
@@ -1217,7 +1217,7 @@ LPTSTR PWD_CWD2(LPUSERFILE lpUserFile, PVIRTUALPATH Pwd, LPTSTR tszChangeTo, MOU
 					// have the full path to the item as it may have been found on a different path, so use
 					// the path that got us this far...
 					if (tszCurrentPath) FreeShared(tszCurrentPath);
-					dwLen = _tcslen(tszBestParent);
+					dwLen = (DWORD)_tcslen(tszBestParent);
 					if (tszCurrentPath = (LPTSTR)AllocateShared(NULL, _T("PWD:BestParent"), (dwLen + dwPathItem + 2) * sizeof(TCHAR)))
 					{
 						dwCurrentPath = dwLen;
@@ -1310,7 +1310,7 @@ LPTSTR PWD_CWD2(LPUSERFILE lpUserFile, PVIRTUALPATH Pwd, LPTSTR tszChangeTo, MOU
 			else
 			{
 				*tpSlash = 0;
-				dwPathItem = strlen(VirtualPath.pwd);
+				dwPathItem = (DWORD)strlen(VirtualPath.pwd);
 				*tpSlash = '/';
 				if ((lpVirtualDir->dwLen == dwPathItem+1) && !strnicmp(lpVirtualDir->pwd, VirtualPath.pwd, dwPathItem))
 				{
@@ -1496,7 +1496,7 @@ BOOL PWD_Normalize(LPTSTR tszPath, LPTSTR tszNormalized, LPTSTR tszCWD)
 	}
 	else
 	{
-		dwNorm = _tcslen(tszCWD);
+		dwNorm = (DWORD)_tcslen(tszCWD);
 		CopyMemory(tszNorm, tszCWD, dwNorm);
 		tszNorm += dwNorm;
 	}
@@ -1508,11 +1508,11 @@ BOOL PWD_Normalize(LPTSTR tszPath, LPTSTR tszNormalized, LPTSTR tszCWD)
 
 		if (!tszSlash)
 		{
-			dwNext = _tcslen(tszPath);
+			dwNext = (DWORD)_tcslen(tszPath);
 		}
 		else
 		{
-			dwNext = (tszSlash - tszPath)/sizeof(TCHAR);
+			dwNext = (DWORD)(tszSlash - tszPath)/sizeof(TCHAR);
 			if (!dwNext)
 			{
 				if (tszSlash[1])
@@ -1559,7 +1559,7 @@ BOOL PWD_Normalize(LPTSTR tszPath, LPTSTR tszNormalized, LPTSTR tszCWD)
 					return FALSE;
 				}
 				tszNorm = tszPrev+1;
-				dwNorm = (tszNorm - tszNormalized)/sizeof(TCHAR);
+				dwNorm = (DWORD)((tszNorm - tszNormalized)/sizeof(TCHAR));
 				continue;
 			}
 			// it's a file/dir just starting with a . so process it normally
@@ -1622,7 +1622,7 @@ BOOL MountFile_Init(BOOL bFirstInitialization)
 		}
 
 		// verify name begins and ends with a '/' and isn't the root dir
-		dwName = _tcslen(tszName);
+		dwName = (DWORD)_tcslen(tszName);
 		if (!dwName)
 		{
 			Putlog(LOG_ERROR, _T("[Virtual_Dirs] entry #%u - missing the pathname.\r\n"), n);
@@ -1642,7 +1642,7 @@ BOOL MountFile_Init(BOOL bFirstInitialization)
 		{
 			dwName--;
 		}
-		dwEvent = _tcslen(pBuffer);
+		dwEvent = (DWORD)_tcslen(pBuffer);
 		if (!dwEvent)
 		{
 			Putlog(LOG_ERROR, _T("[Virtual_Dirs] entry #%u - no event defined for path: %s\r\n"), n, tszName);
@@ -1660,7 +1660,7 @@ BOOL MountFile_Init(BOOL bFirstInitialization)
 			}
 			*tszEvent++ = 0;
 			while (*tszEvent && (*tszEvent == _T(' ') || *tszEvent == _T('\t'))) tszEvent++;
-			dwEvent = _tcslen(tszEvent);
+			dwEvent = (DWORD)_tcslen(tszEvent);
 			if (!dwEvent)
 			{
 				Putlog(LOG_ERROR, _T("[Virtual_Dirs] entry #%u - no event defined for path: %s\r\n"), n, tszName);
@@ -1694,7 +1694,7 @@ BOOL MountFile_Init(BOOL bFirstInitialization)
 		lpVirtualDirEvent->dwId = dwKnownVirtualDirEvents++;
 		if (tszPrivate)
 		{
-			dwPrivate = _tcslen(tszPrivate);
+			dwPrivate = (DWORD)_tcslen(tszPrivate);
 			lpVirtualDirEvent->tszPrivate = (LPTSTR) Allocate(_T("Virtual private"), (dwName+1)*sizeof(TCHAR));
 			if(!lpVirtualDirEvent->tszPrivate)
 			{
@@ -1875,7 +1875,7 @@ MOUNTFILE MountFile_Parse(LPVOID lpBuffer, DWORD dwBuffer, LPSTR szVfsFileName)
 	pLine	= (PCHAR)lpBuffer;
 	dwError	= NO_ERROR;
 	dwLineNum = 0;
-	dwVfsNameLen = strlen(szVfsFileName);
+	dwVfsNameLen = (DWORD)strlen(szVfsFileName);
 	//	Allocate memory for main item
 	hMountFile	= (MOUNTFILE)Allocate("MountFile:Main", sizeof(*hMountFile) + dwVfsNameLen);
 	//	Allocate memory for root table
@@ -1926,7 +1926,7 @@ MOUNTFILE MountFile_Parse(LPVOID lpBuffer, DWORD dwBuffer, LPSTR szVfsFileName)
 			continue;
 		}
 
-		dwLine	= pNewline - pLine;
+		dwLine	= (DWORD)(pNewline - pLine);
 
 		//	Find quote
 		if (! (pQuote = (PCHAR)memchr(&pLine[1], '"', pNewline - &pLine[1])))
@@ -1998,7 +1998,7 @@ MOUNTFILE MountFile_Parse(LPVOID lpBuffer, DWORD dwBuffer, LPSTR szVfsFileName)
 
 		for (;pNewSlash = (PCHAR)memchr(pSlash, '/', pLineEnd - pSlash);pSlash = &pNewSlash[1])
 		{
-			dwItem	= pNewSlash - pSlash;
+			dwItem	= (DWORD)(pNewSlash - pSlash);
 			//	Check item length
 			if (dwItem > _MAX_LONG_PATH)
 			{
@@ -2042,7 +2042,7 @@ MOUNTFILE MountFile_Parse(LPVOID lpBuffer, DWORD dwBuffer, LPSTR szVfsFileName)
 				}
 				//	Update mountpoint structure
 				ZeroMemory(lpMountPoint, sizeof(MOUNT_POINT));
-				lpMountPoint->szName	= (LPSTR)((ULONG)lpMountPoint + sizeof(MOUNT_POINT));
+				lpMountPoint->szName	= (LPSTR)((ULONG_PTR)lpMountPoint + sizeof(MOUNT_POINT));
 				lpMountPoint->dwName	= dwItem;
 				CopyMemory(lpMountPoint->szName, pSlash, dwItem);
 				lpMountPoint->szName[dwItem]	= _T('\0');
@@ -2078,7 +2078,7 @@ MOUNTFILE MountFile_Parse(LPVOID lpBuffer, DWORD dwBuffer, LPSTR szVfsFileName)
 					break;
 				}
 				//	Insert path
-				dwFileName	= pQuote - &pLine[1];
+				dwFileName	= (DWORD)(pQuote - &pLine[1]);
 				//	Allocate memory for filename
 				szFileName	= (LPSTR)Allocate("MountFile:FileName", dwFileName + 1);
 				//	Verify allocation
@@ -2187,7 +2187,7 @@ MOUNTFILE MountFile_Open(LPSTR szFileName, LPFTPUSER lpFtpUser)
 
 	bRead		= FALSE;
 	bFree		= TRUE;
-	dwFileName	= strlen(szFileName);
+	dwFileName	= (DWORD)strlen(szFileName);
 	lpMemory	= Allocate("MountFile:CacheItem", sizeof(MOUNTCACHE) + dwFileName + 1);
 	//	Verify allocation
 	if (! lpMemory) return NULL;
@@ -2239,7 +2239,7 @@ MOUNTFILE MountFile_Open(LPSTR szFileName, LPFTPUSER lpFtpUser)
 		else
 		{
 			dwMountCache++;
-			lpCache->szFileName	= (LPSTR)((ULONG)lpCache + sizeof(MOUNTCACHE));
+			lpCache->szFileName	= (LPSTR)((ULONG_PTR)lpCache + sizeof(MOUNTCACHE));
 			CopyMemory(lpCache->szFileName, szFileName, dwFileName + 1);
 			bRead	= TRUE;
 			bFree	= FALSE;
@@ -2639,7 +2639,7 @@ PreLoad_MountFile(MOUNTFILE hMountFile, BOOL bLogCount)
 		if (dwDaemonStatus != DAEMON_ACTIVE) continue;
 		strcpy(lpPreLoad2->pBuffer, tszPathArray[n]);
 
-		iLen = strlen(lpPreLoad2->pBuffer);
+		iLen = (int)strlen(lpPreLoad2->pBuffer);
 		ZeroMemory(&MountData, sizeof(MountData));
 		if (iLen && (tszRealPath = PWD_Resolve(lpPreLoad2->pBuffer, hMountFile, &MountData, TRUE, 0)))
 		{
@@ -2721,7 +2721,7 @@ PreLoad_VFS(LPVOID LogCount)
 	CHAR             pBuffer[_INI_LINE_LENGTH + 1];
 	LPTSTR           tszDefaultVfs, tszVfsFile;
 	MOUNTFILE        hDefaultFile, hMountFile;
-	BOOL             bLogCount = (BOOL) LogCount;
+	BOOL             bLogCount = (BOOL)(ULONG_PTR)LogCount;
 
 	if (tszVfsFile = Config_Get(&IniConfigFile, "VFS_PreLoad", "VFS", pBuffer, 0))
 	{
@@ -2774,7 +2774,7 @@ DWORD ReverseResolve(MOUNTFILE hMountFile, LPTSTR tszRealPath)
 		ERROR_RETURN(ERROR_PATH_NOT_FOUND, 0);
 	}
 
-	dwLen = _tcslen(tszRealPath);
+	dwLen = (DWORD)_tcslen(tszRealPath);
 
 	for(n=0;n<lpEntries->dwEntries;n++)
 	{

@@ -21,6 +21,17 @@
 
 #include <ioFTPD.h>
 
+/* _INTSIZEOF: byte-slot size of a va_arg entry.
+ * x86 cdecl: round up to sizeof(int)=4 alignment.
+ * x64 MSVC: every va_arg slot is exactly 8 bytes. */
+#ifndef _INTSIZEOF
+#  ifdef _M_X64
+#    define _INTSIZEOF(n) 8
+#  else
+#    define _INTSIZEOF(n) ( (sizeof(n) + sizeof(int) - 1) & ~(sizeof(int) - 1) )
+#  endif
+#endif
+
 VOID Insert_Buffer(LPBUFFER Target, LPVOID In, DWORD Size)
 {
 	LPVOID	Memory;
@@ -183,7 +194,7 @@ BOOL FormatStringWVA(LPBUFFER lpBuffer, LPWSTR wszFormat, va_list Arguments)
 		{
 		case L'%':
 			//	Format string
-			if (AppendStringW(lpBuffer, wpCopyFrom, wszFormat - wpCopyFrom))
+			if (AppendStringW(lpBuffer, wpCopyFrom, (DWORD)(wszFormat - wpCopyFrom)))
 			{
 				bProcess	= FALSE;
 				break;
@@ -272,7 +283,7 @@ BOOL FormatStringWVA(LPBUFFER lpBuffer, LPWSTR wszFormat, va_list Arguments)
 			{
 				//	Convert format string to c-string
 				wszString		= &wszFormat[-1];
-				dwFormatString	= min(&wpFormat[1] - &wszFormat[-1], sizeof(pFormatString) - 2);
+				dwFormatString	= (DWORD)min(&wpFormat[1] - &wszFormat[-1], (ptrdiff_t)(sizeof(pFormatString) - 2));
 				pOffset			= pFormatString;
 
 				if (wpFormat[0] == L'S')
@@ -287,7 +298,7 @@ BOOL FormatStringWVA(LPBUFFER lpBuffer, LPWSTR wszFormat, va_list Arguments)
 			else
 			{
 				//	Wide format string
-				dwFormatString	= min((ULONG)&wpFormat[1] - (ULONG)&wszFormat[-1], sizeof(pFormatString) - sizeof(WCHAR));
+				dwFormatString	= (DWORD)min((ULONG_PTR)&wpFormat[1] - (ULONG_PTR)&wszFormat[-1], sizeof(pFormatString) - sizeof(WCHAR));
 				CopyMemory(pFormatString, &wszFormat[-1], dwFormatString);
 				pFormatString[dwFormatString]	= L'\0';
 			}
@@ -392,7 +403,7 @@ BOOL FormatStringWVA(LPBUFFER lpBuffer, LPWSTR wszFormat, va_list Arguments)
 							}
 
 							wszString	= va_arg(Arguments, LPWSTR);
-							dwLength	= wcslen(wszString);
+							dwLength	= (DWORD)wcslen(wszString);
 							if (iFormatArg[1] > 0 && (DWORD)iFormatArg[1] < dwLength) dwLength	= iFormatArg[1];
 
 							//	Heading spaces
@@ -629,7 +640,7 @@ BOOL FormatStringWVA(LPBUFFER lpBuffer, LPWSTR wszFormat, va_list Arguments)
 				if (iResult >= 0)
 				{
 					lpBuffer->len	+= iResult;
-					Arguments		= (va_list)((ULONG)Arguments + (iFormatArgs * sizeof(INT)) + dwStackSize);
+					Arguments		= (va_list)((UINT_PTR)Arguments + (iFormatArgs * _INTSIZEOF(INT)) + dwStackSize);
 					break;
 				}
 
@@ -652,7 +663,7 @@ BOOL FormatStringWVA(LPBUFFER lpBuffer, LPWSTR wszFormat, va_list Arguments)
 			break;
 		case L'\0':
 			//	String end
-			bReturn		= AppendStringW(lpBuffer, wpCopyFrom, &wszFormat[-1] - wpCopyFrom);
+			bReturn		= AppendStringW(lpBuffer, wpCopyFrom, (DWORD)(&wszFormat[-1] - wpCopyFrom));
 			bProcess	= FALSE;
 			break;
 		}
@@ -667,8 +678,8 @@ BOOL FormatStringWVA(LPBUFFER lpBuffer, LPWSTR wszFormat, va_list Arguments)
 
 BOOL FormatStringW(LPBUFFER lpBuffer, LPWSTR wszFormat, ...)
 {
-	register va_list	Arguments;
-	register DWORD		dwReturn;
+	va_list	Arguments;
+	DWORD   dwReturn;
 
 	va_start(Arguments, wszFormat);
 	dwReturn	= FormatStringWVA(lpBuffer, wszFormat, Arguments);
@@ -688,7 +699,7 @@ BOOL FormatStringAVA(LPBUFFER lpBuffer, LPCSTR szFormat, va_list Arguments)
 	BOOL			bSwap;
 
 	bSwap		= 0;
-	dwFormat	= strlen(szFormat);
+	dwFormat	= (DWORD)strlen(szFormat);
 	wszFormat	= _alloca((dwFormat + 1) * sizeof(WCHAR));
 	if (! wszFormat) return FALSE;
 	//	Format string

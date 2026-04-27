@@ -69,9 +69,16 @@ typedef struct _USERFILE
   INT    Theme;                             /* site color theme preference, 0 = off */
   CHAR   Opaque[257];                       /* for scripts, bots, etc */
 
-  LPVOID lpInternal;                        /* handle reference */
-  LPVOID lpParent;                          /* pointer to parent userfile */
+  LPVOID lpInternal;                        /* handle reference — process-local, must NOT cross IPC boundary */
+  LPVOID lpParent;                          /* pointer to parent userfile — process-local, must NOT cross IPC boundary */
 } USERFILE, *PUSERFILE, *LPUSERFILE;
+
+// Number of bytes safe to copy across a process boundary (excludes the two process-local
+// pointer fields that are always the last two members of USERFILE).
+#define USERFILE_WIRE_SIZE  (sizeof(USERFILE) - 2 * sizeof(LPVOID))
+
+// Zero out process-local pointer fields before sending a USERFILE across a process boundary.
+#define USERFILE_Zero_Internal(puf)  ((puf)->lpInternal = NULL, (puf)->lpParent = NULL)
 
 
 #define MAX_OLD_SECTIONS 10

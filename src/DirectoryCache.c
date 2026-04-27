@@ -104,9 +104,9 @@ DWORD TrimFileName(LPTSTR tszSource, LPTSTR tszTarget)
       if (--tszTarget - tszFileName != 3)
       {
         tszTarget[-(INT)dwBackSlash]  = _TEXT('\0');
-        return tszTarget - tszFileName - dwBackSlash;
+        return (DWORD)(tszTarget - tszFileName - dwBackSlash);
       }
-      return tszTarget - tszFileName;
+      return (DWORD)(tszTarget - tszFileName);
     case _TEXT('/'):
       tszTarget[-1]  = _TEXT('\\');
     case _TEXT('\\'):
@@ -131,7 +131,7 @@ DWORD GetTailOfPath(LPTSTR tszPath, DWORD dwStart)
 
 	if (dwStart == 0)
 	{
-		dwStart = _tcslen(tszPath);
+		dwStart = (DWORD)_tcslen(tszPath);
 	}
 	if (dwStart <= 2)
 	{
@@ -518,7 +518,7 @@ static BOOL UpdateDirectory(LPDIRECTORY lpDirectory, BOOL bRecursive, BOOL bFake
 	  lpFile->dwFileAttributes  = FILE_ATTRIBUTE_DIRECTORY;
 	  lpFile->dwFileMode       &= S_ACCESS;
 	  // update context pointer
-	  lpFile->Context.lpData  = (LPVOID)((ULONG)lpFile + sizeof(FILEINFO) + lpFile->dwFileName * sizeof(TCHAR));
+	  lpFile->Context.lpData  = (LPVOID)((ULONG_PTR)lpFile + sizeof(FILEINFO) + lpFile->dwFileName * sizeof(TCHAR));
   }
   lpDirectoryInfo->lpRootEntry  = lpFile;
 
@@ -565,7 +565,7 @@ static BOOL UpdateDirectory(LPDIRECTORY lpDirectory, BOOL bRecursive, BOOL bFake
         dwSize  += 25;
       }
 
-      dwFileName  = _tcslen(FindData.cFileName) * sizeof(TCHAR);
+      dwFileName  = (DWORD)_tcslen(FindData.cFileName) * sizeof(TCHAR);
       bDirectory  = FindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
       lpFile    = FindFileInfo(FindData.dwFileAttributes, FindData.cFileName, lpDirectory->lpDirectoryInfo);
       FileSize  = FindData.nFileSizeLow + (FindData.nFileSizeHigh * 0x100000000);
@@ -721,7 +721,7 @@ static BOOL UpdateDirectory(LPDIRECTORY lpDirectory, BOOL bRecursive, BOOL bFake
 						  lpFile  = (LPFILEINFO)ReAllocate(lpFile, "Directory:Info:Dir:Fake",
 							  sizeof(FILEINFO) + lpFile->dwFileName * sizeof(TCHAR) + pBuffer[5]);
 						  lpFile->Context.dwData = pBuffer[5];
-						  lpFile->Context.lpData = (LPVOID)((ULONG)lpFile + sizeof(FILEINFO)
+						  lpFile->Context.lpData = (LPVOID)((ULONG_PTR)lpFile + sizeof(FILEINFO)
 							  + lpFile->dwFileName * sizeof(TCHAR));
 						  if (lpFile->Context.dwData < (sizeof(pBuffer)-11*sizeof(UINT)))
 						  {
@@ -901,25 +901,25 @@ BOOL WriteDirectoryPermissions(LPDIRECTORY lpDirectory, LPTSTR tszName, DWORD dw
 
     if (lpFile->Context.dwData)
     {
-      if (((ULONG)pOffset - (ULONG)pBuffer + lpFile->Context.dwData) <= sizeof(pBuffer))
+      if (((ULONG_PTR)pOffset - (ULONG_PTR)pBuffer + lpFile->Context.dwData) <= sizeof(pBuffer))
       {
         CopyMemory(pOffset, lpFile->Context.lpData, lpFile->Context.dwData);
-        pOffset  = (LPUINT)((ULONG)pOffset + lpFile->Context.dwData);
+        pOffset  = (LPUINT)((ULONG_PTR)pOffset + lpFile->Context.dwData);
       }
       else
       {
         //  Not enough buffer space, dump context to file
-        SetFilePointer(hFile, (ULONG)pOffset - (ULONG)pBuffer, NULL, FILE_CURRENT);
+        SetFilePointer(hFile, (LONG)(DWORD)((ULONG_PTR)pOffset - (ULONG_PTR)pBuffer), NULL, FILE_CURRENT);
         WriteFile(hFile, lpFile->Context.lpData, lpFile->Context.dwData, &dwBytesWritten, NULL);
 
         //  Create header for block
-        Crc  = CalculateCrc32((PCHAR)&pBuffer[2], (ULONG)pOffset - (ULONG)&pBuffer[2], NULL);
+        Crc  = CalculateCrc32((PCHAR)&pBuffer[2], (ULONG)((ULONG_PTR)pOffset - (ULONG_PTR)&pBuffer[2]), NULL);
         pBuffer[1]  = CalculateCrc32(lpFile->Context.lpData, lpFile->Context.dwData, &Crc);
-        pBuffer[0]  = lpFile->Context.dwData + ((ULONG)pOffset - (ULONG)pBuffer);
+        pBuffer[0]  = lpFile->Context.dwData + (ULONG)((ULONG_PTR)pOffset - (ULONG_PTR)pBuffer);
 
         //  Write block to file
         SetFilePointer(hFile, -(LONG)pBuffer[0], NULL, FILE_CURRENT);
-        WriteFile(hFile, pBuffer, (ULONG)pOffset - (ULONG)pBuffer, &dwBytesWritten, NULL);
+        WriteFile(hFile, pBuffer, (ULONG)((ULONG_PTR)pOffset - (ULONG_PTR)pBuffer), &dwBytesWritten, NULL);
         SetFilePointer(hFile, lpFile->Context.dwData, NULL, FILE_CURRENT);
 
         pOffset  = &pBuffer[2];
@@ -935,10 +935,10 @@ BOOL WriteDirectoryPermissions(LPDIRECTORY lpDirectory, LPTSTR tszName, DWORD dw
     if (lpFile->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ||
       ! (lpFile->dwFileAttributes & FILE_ATTRIBUTE_IOFTPD)) continue;
 
-    if (sizeof(pBuffer) - ((ULONG)pOffset - (ULONG)pBuffer) < ((lpFile->dwFileName + 1) * sizeof(TCHAR) + 6 * sizeof(UINT)))
+    if (sizeof(pBuffer) - ((ULONG_PTR)pOffset - (ULONG_PTR)pBuffer) < ((lpFile->dwFileName + 1) * sizeof(TCHAR) + 6 * sizeof(UINT)))
     {
       //  Create header for block
-      pBuffer[0]  = (ULONG)pOffset - (ULONG)pBuffer;
+      pBuffer[0]  = (DWORD)((ULONG_PTR)pOffset - (ULONG_PTR)pBuffer); /* bounded by sizeof(pBuffer)=4096 */
       pBuffer[1]  = CalculateCrc32((PCHAR)&pBuffer[2], pBuffer[0] - 2 * sizeof(UINT), NULL);
 
       //  Write block to file
@@ -957,13 +957,13 @@ BOOL WriteDirectoryPermissions(LPDIRECTORY lpDirectory, LPTSTR tszName, DWORD dw
 	pOffset[4]  = lpFile->dwUploadTimeInMs;
     pOffset[5]  = 0;
     CopyMemory(&pOffset[6], lpFile->tszFileName, pOffset[0] * sizeof(TCHAR));
-    pOffset    = (LPUINT)(pOffset[0] * sizeof(TCHAR) + (ULONG)&pOffset[6]);
+    pOffset    = (LPUINT)(pOffset[0] * sizeof(TCHAR) + (ULONG_PTR)&pOffset[6]);
   }
 
   if (pOffset != &pBuffer[2])
   {
     //  Create header for block
-    pBuffer[0]  = (ULONG)pOffset - (ULONG)pBuffer;
+    pBuffer[0]  = (ULONG)((ULONG_PTR)pOffset - (ULONG_PTR)pBuffer);
     pBuffer[1]  = CalculateCrc32((PCHAR)&pBuffer[2], pBuffer[0] - 2 * sizeof(UINT), NULL);
 
     //  Write block to file
@@ -1108,7 +1108,7 @@ BOOL ReadDirectoryPermissions(LPDIRECTORY lpDirectory)
               break;
             }
             lpDirectory->lpDirectoryInfo->lpRootEntry  = lpFile;
-			lpFile->Context.lpData  = (LPVOID)((ULONG)lpFile + sizeof(FILEINFO) + lpFile->dwFileName * sizeof(TCHAR));
+			lpFile->Context.lpData  = (LPVOID)((ULONG_PTR)lpFile + sizeof(FILEINFO) + lpFile->dwFileName * sizeof(TCHAR));
             CopyMemory(lpFile->Context.lpData, &pOffset[6], pOffset[0]);
 			if (!ValidFileContext(&lpFile->Context))
 			{
@@ -1150,7 +1150,7 @@ BOOL ReadDirectoryPermissions(LPDIRECTORY lpDirectory)
           }
           else bCleanUp  = TRUE;
         }
-        pOffset  = (LPUINT)((ULONG)pOffset + ItemSize);
+        pOffset  = (LPUINT)((ULONG_PTR)pOffset + ItemSize);
       }
     }
   }
@@ -1237,7 +1237,7 @@ BOOL MarkDirectory(LPTSTR tszFileName)
 	DWORD             dwFileName;
 
 	//  Trim filename
-	dwFileName  = _tcslen(tszFileName) * sizeof(TCHAR);
+	dwFileName  = (DWORD)_tcslen(tszFileName) * sizeof(TCHAR);
 	lpDirectory = _alloca(sizeof(DIRECTORY) + dwFileName + sizeof(TCHAR));
 	if (!lpDirectory) return FALSE;
 
@@ -1257,7 +1257,7 @@ BOOL MarkParent(LPTSTR tszFileName, BOOL bParent2)
 	DWORD             dwFileName;
 
 	//  Trim filename
-	dwFileName  = _tcslen(tszFileName) * sizeof(TCHAR);
+	dwFileName  = (DWORD)_tcslen(tszFileName) * sizeof(TCHAR);
 	lpDirectory = _alloca(sizeof(DIRECTORY) + dwFileName + sizeof(TCHAR));
 	if (!lpDirectory) return FALSE;
 
@@ -1315,7 +1315,7 @@ BOOL UpdateFileInfo(LPTSTR tszFileName, LPVFSUPDATE lpData)
 	bDirectory  = (dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ? TRUE : FALSE);
 
 	//  Trim filename
-	dwFileName  = _tcslen(tszFileName) * sizeof(TCHAR);
+	dwFileName  = (DWORD)_tcslen(tszFileName) * sizeof(TCHAR);
 	tszPath  = (LPTSTR)_alloca(dwFileName + sizeof(TCHAR));
 	if (! tszPath)
 	{
@@ -1464,7 +1464,7 @@ BOOL UpdateFileInfo(LPTSTR tszFileName, LPVFSUPDATE lpData)
 			lpNewRoot->ftAlternateTime  = lpData->ftAlternateTime;
 			lpNewRoot->dwUploadTimeInMs = lpData->dwUploadTimeInMs;
 			lpNewRoot->lReferenceCount  = 1;
-			lpNewRoot->Context.lpData   = (LPVOID)((ULONG)lpNewRoot + dwSize);
+			lpNewRoot->Context.lpData   = (LPVOID)((ULONG_PTR)lpNewRoot + dwSize);
 			lpNewRoot->Context.dwData   = lpData->Context.dwData;
 			// append context
 			CopyMemory(lpNewRoot->Context.lpData, lpData->Context.lpData, lpData->Context.dwData);
@@ -1610,7 +1610,7 @@ LPDIRECTORYINFO OpenDirectory(LPTSTR tszFileName, BOOL bRecursive, BOOL bFakeDir
 	LONG                       lOldUpdateState;
 
 	//  Trim filename
-	dwFileName  = _tcslen(tszFileName);
+	dwFileName  = (DWORD)_tcslen(tszFileName);
 	if (dwFileName > _MAX_LONG_PATH)
 	{
 		SetLastError(ERROR_PATH_NOT_FOUND);
@@ -1685,7 +1685,7 @@ LPDIRECTORYINFO OpenDirectory(LPTSTR tszFileName, BOOL bRecursive, BOOL bFakeDir
 		if (GetVolumePathName(tszFileName, tszRootDir, sizeof(tszRootDir)/sizeof(*tszRootDir)))
 		{
 			// Now make sure root path ends in a '\', i.e. "\\MyServer\MyShare\", or "C:\".
-			dwLen = _tcslen(tszRootDir);
+			dwLen = (DWORD)_tcslen(tszRootDir);
 			if ((dwLen < sizeof(tszRootDir)/sizeof(*tszRootDir)-1) && dwLen && tszRootDir[dwLen-1] != _T('\\'))
 			{
 				tszRootDir[dwLen] = _T('\\');
@@ -1819,7 +1819,7 @@ LPDIRECTORYINFO OpenDirectory(LPTSTR tszFileName, BOOL bRecursive, BOOL bFakeDir
 						_tcscpy_s(tszTargetName, sizeof(tszTargetName)/sizeof(TCHAR), tszFileName);
 					}
 
-					dwPos = _tcslen(tszTargetName);
+					dwPos = (DWORD)_tcslen(tszTargetName);
 					if (dwPos > 3 && tszTargetName[dwPos-1] == _T('\\'))
 					{
 						// strip off the trailing slash
@@ -1837,7 +1837,7 @@ LPDIRECTORYINFO OpenDirectory(LPTSTR tszFileName, BOOL bRecursive, BOOL bFakeDir
 					{
 						*++tszTemp = 0;
 					}
-					dwPos = (tszTemp - tszTargetName)/sizeof(TCHAR);
+					dwPos = (DWORD)((tszTemp - tszTargetName)/sizeof(TCHAR));
 					// copy over our just computed parent directory position
 					strncpy_s(tszRelativeName, sizeof(tszRelativeName)/sizeof(TCHAR), tszTargetName, dwPos);
 					// and append relative path to it
@@ -1854,7 +1854,7 @@ LPDIRECTORYINFO OpenDirectory(LPTSTR tszFileName, BOOL bRecursive, BOOL bFakeDir
 					{
 						break;
 					}
-					dwSize = _tcslen(tszTargetName);
+					dwSize = (DWORD)_tcslen(tszTargetName);
 					if (dwSize > _MAX_LONG_PATH)
 					{
 						// we don't handle long names... just bail
@@ -2004,7 +2004,7 @@ CONTINUE:
 		}
 		dwError = NO_ERROR;
 		lpDirectoryInfo = AllocateFakeDirInfo(dwFileName, tszFileName, dwFileName-dwPos, &tszFileName[dwPos],
-			                                  _tcslen(tszTargetName), tszTargetName, NULL);
+			                                  (DWORD)_tcslen(tszTargetName), tszTargetName, NULL);
 		if (lpDirectoryInfo)
 		{
 			CopyMemory(&lpDirectory->ftCacheTime, &ftLastWriteTime, sizeof(FILETIME));
@@ -2089,7 +2089,7 @@ BOOL GetFileInfo2(LPTSTR tszFileName, LPFILEINFO *lpFileInfo, BOOL bNoCheck, LPD
 
   lpFile  = NULL;
   tszPath  = tszFileName;
-  dwPath  = _tcslen(tszPath);
+  dwPath  = (DWORD)_tcslen(tszPath);
   //  Determinate filetype and verify existence
   dwFileAttributes  = IoGetFileAttributes(tszFileName);
   if (dwFileAttributes == INVALID_FILE_ATTRIBUTES)
@@ -2263,7 +2263,7 @@ LPFIND IoFindFirstFile(LPTSTR tszPath, LPTSTR tszFilter, LPFILEINFO *lpFileInfo)
 
   if (! tszFilter) return NULL;
   //  Allocate memory for find
-  dwFilter  = _tcslen(tszFilter) * sizeof(TCHAR);
+  dwFilter  = (DWORD)_tcslen(tszFilter) * sizeof(TCHAR);
   hFind  = (LPFIND)Allocate("Find", sizeof(FIND) + dwFilter);
   if (! hFind) return NULL;
 
@@ -2403,16 +2403,16 @@ BOOL InsertFileContext(LPFILECONTEXT lpContext, BYTE Item, LPVOID lpData, DWORD 
 
 	dwMemory  = dwData + sizeof(BYTE) + sizeof(UINT32) + sizeof(TCHAR);
 	//  Copy new data
-	CopyMemory((LPVOID)((ULONG)lpContext->lpData + lpContext->dwData),
+	CopyMemory((LPVOID)((ULONG_PTR)lpContext->lpData + lpContext->dwData),
 		&Item, sizeof(BYTE));
 	lpContext->dwData  += sizeof(BYTE);
-	CopyMemory((LPVOID)((ULONG)lpContext->lpData + lpContext->dwData),
+	CopyMemory((LPVOID)((ULONG_PTR)lpContext->lpData + lpContext->dwData),
 		&dwMemory, sizeof(UINT32));
 	lpContext->dwData  += sizeof(UINT32);
-	CopyMemory((LPVOID)((ULONG)lpContext->lpData + lpContext->dwData),
+	CopyMemory((LPVOID)((ULONG_PTR)lpContext->lpData + lpContext->dwData),
 		lpData, dwData);
 	lpContext->dwData  += dwData;
-	CopyMemory((LPVOID)((ULONG)lpContext->lpData + lpContext->dwData), pBuffer, sizeof(TCHAR));
+	CopyMemory((LPVOID)((ULONG_PTR)lpContext->lpData + lpContext->dwData), pBuffer, sizeof(TCHAR));
 	lpContext->dwData  += sizeof(TCHAR);
 
 	return TRUE;
@@ -2438,10 +2438,10 @@ BOOL DeleteFileContext(LPFILECONTEXT lpContext, BYTE Item)
   if (lpMemory)
   {
     dwMemory  = ((PUINT32)lpMemory)[-1];
-    lpMemory  = (LPVOID)((ULONG)lpMemory - sizeof(UINT32) - sizeof(BYTE));
+    lpMemory  = (LPVOID)((ULONG_PTR)lpMemory - sizeof(UINT32) - sizeof(BYTE));
     MoveMemory(lpMemory,
-      (LPVOID)((ULONG)lpMemory + dwMemory),
-      ((ULONG)lpContext->lpData + lpContext->dwData) - ((ULONG)lpMemory + dwMemory));
+      (LPVOID)((ULONG_PTR)lpMemory + dwMemory),
+      ((ULONG_PTR)lpContext->lpData + lpContext->dwData) - ((ULONG_PTR)lpMemory + dwMemory));
     lpContext->dwData  -= dwMemory;
     return TRUE;
   }
@@ -2523,8 +2523,8 @@ BOOL IoMoveFile(LPTSTR tszExistingFileName, LPTSTR tszNewFileName)
   //  Move file on filesystem
   if (IoMoveFileEx(tszExistingFileName, tszNewFileName, MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH))
   {
-    dwExistingFileName  = _tcslen(tszExistingFileName);
-    dwNewFileName  = _tcslen(tszNewFileName);
+    dwExistingFileName  = (DWORD)_tcslen(tszExistingFileName);
+    dwNewFileName  = (DWORD)_tcslen(tszNewFileName);
     tszFileName  = (LPTSTR)_alloca((max(dwNewFileName, dwExistingFileName) + 1) * sizeof(TCHAR));
     if (tszFileName)
     {
@@ -2586,7 +2586,7 @@ IoDeleteFile(LPTSTR tszFileName, DWORD dwFileName)
   if (!IoDeleteFileEx(tszFileName)) return FALSE;
 
   //  Get parent filename
-  dwPath  = _tcslen(tszFileName);
+  dwPath  = (DWORD)_tcslen(tszFileName);
   tszPath  = (LPTSTR)_alloca(dwPath * sizeof(TCHAR));
   if (! tszPath || ! dwPath) return TRUE;
 
@@ -2741,7 +2741,7 @@ BOOL IoRemoveDirectory(LPTSTR tszPath)
   BOOL        bDelete, bAdd;
 
   if (! tszPath) return FALSE;
-  dwPath  = _tcslen(tszPath);
+  dwPath  = (DWORD)_tcslen(tszPath);
   dwError    = NO_ERROR;
   lpListHead  = NULL;
   dwMaxFileName  = 0;
@@ -2793,7 +2793,7 @@ BOOL IoRemoveDirectory(LPTSTR tszPath)
 
 	if (bAdd)
 	{
-        dwFileName  = _tcslen(tszFileName);
+        dwFileName  = (DWORD)_tcslen(tszFileName);
         //  Allocate memory for item
         lpMemory  = Allocate("DeleteList", sizeof(struct _DELETELIST) + dwFileName * sizeof(TCHAR));
         if (! lpMemory)
@@ -2946,8 +2946,8 @@ BOOL IoMoveDirectory(LPTSTR tszSrcPath, LPTSTR tszDestPath, CMD_PROGRESS *lpProg
 		SetLastError(IO_INVALID_ARGUMENTS);
 		return FALSE;
 	}
-	dwSrcLen  = _tcslen(tszSrcPath);
-	dwDestLen = _tcslen(tszDestPath);
+	dwSrcLen  = (DWORD)_tcslen(tszSrcPath);
+	dwDestLen = (DWORD)_tcslen(tszDestPath);
 
 	// verify the real directory paths aren't too short or too long to be
 	// valid and that they  don't end in a '\'.  In theory it might be

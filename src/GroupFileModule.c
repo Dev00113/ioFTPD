@@ -451,7 +451,7 @@ Group_Default_Write(LPGROUPFILE lpGroupFile)
 	for (;dwDataRow--;)
 	{
 		lpDataRow  = &GroupDataRow[dwDataRow];
-		pField    = (LPVOID)((ULONG)lpGroupFile + lpDataRow->dwOffset);
+		pField    = (LPVOID)((ULONG_PTR)lpGroupFile + lpDataRow->dwOffset);
 		bPrint = FALSE;
 
 

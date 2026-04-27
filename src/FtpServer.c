@@ -351,7 +351,7 @@ BOOL FTP_New_Client(PCONNECTION_INFO lpConnection)
 	// print responses or don't setup input jobs means the server will just hang this connection.
 	// Only happens when out of memory so all hell breaking loose already...
 
-	lpUser	= (LPFTPUSER )((ULONG)lpConnection - offsetof(FTP_USER, Connection));
+	lpUser	= (LPFTPUSER )((ULONG_PTR)lpConnection - offsetof(FTP_USER, Connection));
 
 	//	Allocate transfer buffer
 	lpUser->CommandChannel.Out.size	= DEFAULT_BUF_SIZE;
@@ -475,7 +475,7 @@ BOOL LoadLockedString(LPTSTR tszSection, LPTSTR tszName, LPTSTR volatile *ptszSt
 
 	if (tszTemp = Config_Get(&IniConfigFile, tszSection, tszName, NULL, NULL))
 	{
-		dwLen = _tcslen(tszTemp);
+		dwLen = (DWORD)_tcslen(tszTemp);
 		if (!(tszShared = (LPTSTR) AllocateShared(NULL, tszName, (dwLen+1)*sizeof(TCHAR))))
 		{
 			Free(tszTemp);

@@ -712,7 +712,7 @@ VOID Service_Shutdown(LPIOSERVICE lpService)
     lpService->bActive = FALSE;
     lNumClients = lpService->lAcceptClients;
 
-    Socket = (SOCKET)InterlockedExchange(&lpService->Socket, INVALID_SOCKET);
+    Socket = IoAtomicExchangeSocket(&lpService->Socket, INVALID_SOCKET);
     if (Socket != INVALID_SOCKET)
     {
         closesocket(Socket);
@@ -720,10 +720,10 @@ VOID Service_Shutdown(LPIOSERVICE lpService)
 
     for (i = 0; i < 10; i++)
     {
-        lpNC = (LPNEWCLIENT)InterlockedExchangePointer(&lpService->lpAcceptClients[i], 0);
+        lpNC = (LPNEWCLIENT)InterlockedExchangePointer((PVOID volatile*)&lpService->lpAcceptClients[i], 0);
         if (lpNC && (lpNC != (LPNEWCLIENT)-1))
         {
-            Socket = (SOCKET)InterlockedExchange(&lpNC->Socket, INVALID_SOCKET);
+            Socket = IoAtomicExchangeSocket(&lpNC->Socket, INVALID_SOCKET);
             if (Socket != INVALID_SOCKET)
             {
                 if (closesocket(Socket))
@@ -997,14 +997,14 @@ LRESULT Service_AcceptEx(WPARAM wParam, LPARAM lParam)
 
     if (!lpService->bActive)
     {
-        InterlockedExchangePointer(&lpService->lpAcceptClients[wParam], (PVOID)-1);
+        InterlockedExchangePointer((PVOID volatile*)&lpService->lpAcceptClients[wParam], (PVOID)-1);
         return TRUE;
     }
 
     lpNewClient = (LPNEWCLIENT)Allocate("Service:Accept:Socket", sizeof(NEWCLIENT));
     if (!lpNewClient)
     {
-        InterlockedExchangePointer(&lpService->lpAcceptClients[wParam], (PVOID)-1);
+        InterlockedExchangePointer((PVOID volatile*)&lpService->lpAcceptClients[wParam], (PVOID)-1);
         return TRUE;
     }
 
@@ -1021,7 +1021,7 @@ LRESULT Service_AcceptEx(WPARAM wParam, LPARAM lParam)
             sizeof(struct sockaddr_in) + 32, sizeof(struct sockaddr_in) + 32, &dwNull,
             (LPOVERLAPPED)&lpNewClient->Overlapped) || WSAGetLastError() == ERROR_IO_PENDING)
         {
-            InterlockedExchangePointer(&lpService->lpAcceptClients[wParam], lpNewClient);
+            InterlockedExchangePointer((PVOID volatile*)&lpService->lpAcceptClients[wParam], lpNewClient);
             InterlockedIncrement(&lpService->lAcceptClients);
             return FALSE;
         }
@@ -1029,14 +1029,14 @@ LRESULT Service_AcceptEx(WPARAM wParam, LPARAM lParam)
     }
 
     Putlog(LOG_ERROR, _T("Failed in Service_AcceptEx: index = %d\r\n"), (int)wParam);
-    InterlockedExchangePointer(&lpService->lpAcceptClients[wParam], (PVOID)-1);
+    InterlockedExchangePointer((PVOID volatile*)&lpService->lpAcceptClients[wParam], (PVOID)-1);
     Free(lpNewClient);
     return TRUE;
 }
 
 BOOL Service_LogError(LPVOID lError)
 {
-    Putlog(LOG_ERROR, "AcceptEx() failed with error: %u\r\n", (DWORD)lError);
+    Putlog(LOG_ERROR, "AcceptEx() failed with error: %u\r\n", (DWORD)(ULONG_PTR)lError);
     return FALSE;
 }
 
@@ -1051,7 +1051,7 @@ VOID Service_AcceptClient(LPVOID lpNewClient, DWORD dwBytesReceived, DWORD dwLas
 
     if (dwDaemonStatus != DAEMON_SHUTDOWN)
     {
-        InterlockedExchangePointer(&lpService->lpAcceptClients[lpNC->dwAcceptIndex], 0);
+        InterlockedExchangePointer((PVOID volatile*)&lpService->lpAcceptClients[lpNC->dwAcceptIndex], 0);
         InterlockedDecrement(&lpService->lAcceptClients);
     }
 
@@ -1081,7 +1081,7 @@ VOID Service_AcceptClient(LPVOID lpNewClient, DWORD dwBytesReceived, DWORD dwLas
             (pRemoteAddr->sin_addr.s_addr == lpNC->lpService->addrLocal.sin_addr.s_addr))
         {
             lpService->addrLocal.sin_port = 0;
-            Socket = (SOCKET)InterlockedExchange(&lpNC->Socket, INVALID_SOCKET);
+            Socket = IoAtomicExchangeSocket(&lpNC->Socket, INVALID_SOCKET);
             if (Socket != INVALID_SOCKET)
             {
                 closesocket(Socket);
@@ -1105,11 +1105,11 @@ VOID Service_AcceptClient(LPVOID lpNewClient, DWORD dwBytesReceived, DWORD dwLas
         break;
 
     default:
-        QueueJob(Service_LogError, (LPVOID)dwLastError, JOB_PRIORITY_LOW);
+        QueueJob(Service_LogError, (LPVOID)(ULONG_PTR)dwLastError, JOB_PRIORITY_LOW);
         /* fallthrough */
     case ERROR_OPERATION_ABORTED:
     CLEANUP:
-        Socket = (SOCKET)InterlockedExchange(&lpNC->Socket, INVALID_SOCKET);
+        Socket = (SOCKET)(UINT_PTR)InterlockedExchangePointer((PVOID volatile*)&lpNC->Socket, (PVOID)(UINT_PTR)INVALID_SOCKET);
         if (Socket != INVALID_SOCKET)
         {
             closesocket(Socket);

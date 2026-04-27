@@ -163,7 +163,7 @@ LPOUTPUT_THEME Parse_Theme(LPOUTPUT_THEME lpInTheme, INT iTheme, LPTSTR tszSubTh
 			return NULL;
 		}
 
-		if ((2 != _stscanf_s(tszLine, _T("%d %64s%n"), &iSubDefault, tszName, sizeof(tszName)/sizeof(*tszName), &iPos)) ||
+		if ((2 != _stscanf_s(tszLine, _T("%d %64s%n"), &iSubDefault, tszName, (unsigned int)(sizeof(tszName)/sizeof(*tszName)), &iPos)) ||
 			(iSubDefault < 0) || (iSubDefault > MAX_THEMES))
 		{
 			// it's an invalid main entry
@@ -268,7 +268,7 @@ BOOL TextFile_Show(LPSTR szFileName, LPBUFFER lpOutBuffer, LPSTR szPrefix)
 	if ((hFileHandle = CreateFile(szFileName, GENERIC_READ, 
 		FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL)) != INVALID_HANDLE_VALUE)
 	{
-		dwPrefix	= (szPrefix ? strlen(szPrefix) : 0);
+		dwPrefix	= (szPrefix ? (DWORD)strlen(szPrefix) : 0);
 		bPrefix		= TRUE;
 		bNewline	= FALSE;
 
@@ -280,7 +280,7 @@ BOOL TextFile_Show(LPSTR szFileName, LPBUFFER lpOutBuffer, LPSTR szPrefix)
 
 			for (pLine = pReadBuffer;(pNewline = (PCHAR)memchr(pLine, '\n', pEnd - pLine));pLine = &pNewline[1])
 			{
-				dwLine	= pNewline - pLine;
+				dwLine	= (DWORD)(pNewline - pLine);
 				//	Add prefix
 				if (bPrefix) Put_Buffer(lpOutBuffer, szPrefix, dwPrefix);
 
@@ -306,7 +306,7 @@ BOOL TextFile_Show(LPSTR szFileName, LPBUFFER lpOutBuffer, LPSTR szPrefix)
 				//	Remove carriage feed
 				if (pEnd[-1] == '\r') pEnd--;
 				//	Put buffer
-				Put_Buffer(lpOutBuffer, pLine, pEnd - pLine);
+				Put_Buffer(lpOutBuffer, pLine, (DWORD)(pEnd - pLine));
 				bNewline	= TRUE;
 				bPrefix		= FALSE;
 			}
@@ -401,9 +401,9 @@ LPBYTE Message_PreCompile2(PCHAR lpBuffer, LPDWORD lpOutSize, LPTSTR tszFilePath
 				(pCookieEnd = strpbrk(pCookie, "]\n")) && pCookieEnd[0] == ']')
 			{
 				//	Calculate preceeding string's length
-				sString		= pStringEnd - pString;
-				dwFormat	= pFormatEnd - pFormat;
-				dwCookie	= pCookieEnd - pCookie;
+				sString		= (USHORT)(pStringEnd - pString);
+				dwFormat	= (DWORD)(pFormatEnd - pFormat);
+				dwCookie	= (DWORD)(pCookieEnd - pCookie);
 
 				if (sString)
 				{
@@ -440,8 +440,8 @@ LPBYTE Message_PreCompile2(PCHAR lpBuffer, LPDWORD lpOutSize, LPTSTR tszFilePath
 			//	Increase line count
 			dwLines++;
 			//	Get string length
-			sString	= (pStringEnd > pString && pStringEnd[-1] == '\r' ?
-				&pStringEnd[-1] : pStringEnd) - pString;
+			sString	= (USHORT)((pStringEnd > pString && pStringEnd[-1] == '\r' ?
+				&pStringEnd[-1] : pStringEnd) - pString);
 
 			if (sString > 0)
 			{
@@ -755,7 +755,7 @@ LPBYTE Message_Load(LPSTR szFileName)
 		FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
 	if (hMessageFile == INVALID_HANDLE_VALUE) return NULL;
 
-	dwFileName	= strlen(szFileName) + 1;
+	dwFileName	= (DWORD)strlen(szFileName) + 1;
 	//	Allocate cache item
 	lpCacheItem	= (LPMESSAGE_CACHE)Allocate("Cookie:Cache", sizeof(MESSAGE_CACHE) + dwFileName);
 	if (! lpCacheItem)
@@ -916,7 +916,7 @@ BOOL Message_Compile(LPBYTE pBuffer, LPBUFFER lpOutBuffer, BOOL bSkipFirstPrefix
 	if (szPrefix)
 	{
 		MessageData.szPrefix[0]	= szPrefix;
-		MessageData.dwPrefix[0]	= strlen(szPrefix);
+		MessageData.dwPrefix[0]	= (DWORD)strlen(szPrefix);
 
 		if (! szLastPrefix)
 		{
@@ -925,7 +925,7 @@ BOOL Message_Compile(LPBYTE pBuffer, LPBUFFER lpOutBuffer, BOOL bSkipFirstPrefix
 		}
 		else
 		{
-			MessageData.dwPrefix[1]	= strlen(szLastPrefix);
+			MessageData.dwPrefix[1]	= (DWORD)strlen(szLastPrefix);
 			MessageData.szPrefix[1]	= szLastPrefix;
 		}
 	}

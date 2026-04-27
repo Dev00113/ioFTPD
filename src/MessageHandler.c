@@ -682,7 +682,7 @@ VOID GetHostClass(LPHOSTINFO lpHostInfo)
 
 
   szHostName = (lpHostInfo->szHostName ? lpHostInfo->szHostName : "");
-  dwHostName  = strlen(szHostName);
+  dwHostName  = (DWORD)strlen(szHostName);
   InetAddress.S_un.S_addr  = ((PULONG)lpHostInfo->NetworkAddress)[0];
   Obscure_IP(szObscuredIP, &InetAddress);
   Obscure_Host(szObscuredHost, szHostName);
@@ -913,7 +913,7 @@ BOOL ReadConnectionClasses(LPTSTR tszFileName)
           {
             //  Add new service class
             tszClass  = GetStringIndexStatic(&String, 1);
-            dwClass  = GetStringIndexLength(&String, 1) * sizeof(TCHAR);
+            dwClass  = (DWORD)GetStringIndexLength(&String, 1) * sizeof(TCHAR);
 
             lpClass  = (LPCLASS)Allocate("Rule:ClassName", sizeof(CLASS) + dwClass);
             if (lpClass)
@@ -949,7 +949,7 @@ BOOL ReadConnectionClasses(LPTSTR tszFileName)
             dwContext  = sprintf((PCHAR)pHostName, "%.*S", sizeof(pHostName) - 1, GetStringIndexStatic(&String, 2));
 #else
             lpContext  = GetStringIndexStatic(&String, 2);
-            dwContext  = GetStringIndexLength(&String, 2);
+            dwContext  = (DWORD)GetStringIndexLength(&String, 2);
 #endif
             dwType    = HOSTNAME;
             break;
@@ -984,7 +984,7 @@ BOOL ReadConnectionClasses(LPTSTR tszFileName)
                 if (GetStringItems(&String) > 3)
                 {
                   tszLog  = GetStringRange(&String, 3, STR_END);
-                  dwLog  = (_tcslen(tszLog) + 1) * sizeof(TCHAR);
+                  dwLog  = (DWORD)(_tcslen(tszLog) + 1) * sizeof(TCHAR);
                 }
                 else dwLog  = 0;
 
@@ -995,7 +995,7 @@ BOOL ReadConnectionClasses(LPTSTR tszFileName)
                   //  Copy log string
                   if (dwLog)
                   {
-                    lpDenyRule->tszLog  = (LPSTR)((ULONG)&lpDenyRule[1] + dwContext);
+                    lpDenyRule->tszLog  = (LPSTR)((ULONG_PTR)&lpDenyRule[1] + dwContext);
                     CopyMemory(lpDenyRule->tszLog, tszLog, dwLog);
                   }
                   else lpDenyRule->tszLog  = NULL;

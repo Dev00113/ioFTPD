@@ -184,8 +184,8 @@ static BOOL IsUserFileLoaded(IO_WHO *lpUserData)
 
 #define	_OFFSETOF(x, y, z, t) (DataOffset[z].lpOffset[y * 2] == -1 ? (t) NULL : \
 		(! DataOffset[z].lpOffset[y * 2 + 1] ? \
-		((t *)((ULONG)x + DataOffset[z].lpOffset[y * 2]))[0] : \
-		(t)((ULONG)x + DataOffset[z].lpOffset[y * 2])))
+		((t *)((ULONG_PTR)x + DataOffset[z].lpOffset[y * 2]))[0] : \
+		(t)((ULONG_PTR)x + DataOffset[z].lpOffset[y * 2])))
 
 
 VOID InitDataOffsets(LPDATA_OFFSETS lpDataOffsets, LPVOID lpBuffer, DWORD dwOffsetType)
@@ -203,7 +203,7 @@ VOID InitDataOffsets(LPDATA_OFFSETS lpDataOffsets, LPVOID lpBuffer, DWORD dwOffs
 	//	Get information of data
 	lpDataOffsets->dwHave	=
 		(! DataOffset[dwOffsetType].ConditionFunc ||
-		DataOffset[dwOffsetType].ConditionFunc((LPVOID)((ULONG)lpBuffer + DataOffset[dwOffsetType].bConditionParam)) ?
+		DataOffset[dwOffsetType].ConditionFunc((LPVOID)((ULONG_PTR)lpBuffer + DataOffset[dwOffsetType].bConditionParam)) ?
 		DataOffset[dwOffsetType].dwHave[0] : DataOffset[dwOffsetType].dwHave[1]);
 	//	Set pointers
 	lpDataOffsets->pConnectionInfo	= _OFFSETOF(lpBuffer, 0, dwOffsetType, PCONNECTION_INFO);
@@ -211,8 +211,11 @@ VOID InitDataOffsets(LPDATA_OFFSETS lpDataOffsets, LPVOID lpBuffer, DWORD dwOffs
 	lpDataOffsets->lpGroupFile		= _OFFSETOF(lpBuffer, 2, dwOffsetType, LPGROUPFILE);
 	lpDataOffsets->lpCommandChannel	= _OFFSETOF(lpBuffer, 3, dwOffsetType, LPCOMMAND);
 	lpDataOffsets->lpDataChannel	= _OFFSETOF(lpBuffer, 4, dwOffsetType, LPDATACHANNEL);
+#pragma warning(suppress: 4311 4312)
 	lpDataOffsets->iCreditSection	= _OFFSETOF(lpBuffer, 5, dwOffsetType, INT);
+#pragma warning(suppress: 4311 4312)
 	lpDataOffsets->iStatsSection	= _OFFSETOF(lpBuffer, 6, dwOffsetType, INT);
+#pragma warning(suppress: 4311 4312)
 	lpDataOffsets->iShareSection	= _OFFSETOF(lpBuffer, 7, dwOffsetType, INT);
 	lpDataOffsets->lpUnknown		= _OFFSETOF(lpBuffer, 8, dwOffsetType, LPVOID);
 	lpDataOffsets->hMountFile		= _OFFSETOF(lpBuffer, 9, dwOffsetType, LPVOID);

@@ -381,9 +381,9 @@ When `Auto`, ioFTPD probes the OS version and registry at startup and logs the r
 
 1. **OpenSSL upgraded to 3.6.1** (resolved — TLS 1.3, ECDHE, modern cipher suites; see OpenSSL.txt).
 2. **Tcl upgraded to 9.0.2** (resolved — official unmodified build; no source patches required).
-3. **32-bit only**. The build targets `MachineX86` exclusively. `LARGEADDRESSAWARE` is enabled so the process can use up to 4 GB of virtual address space on 64-bit Windows, but modern 64-bit mitigations (high-entropy ASLR, CFG) are unavailable until the codebase is ported to x64.
-4. **ASLR is explicitly disabled** (`RandomizedBaseAddress=false`) in all build configurations, making exploitation of memory-safety bugs trivial.
-5. **DEP/NX is explicitly disabled** (`DataExecutionPrevention` tag left empty) in all configurations.
+3. ~~**32-bit only**~~ **Resolved in v8.0.0** — a native AMD64 build (`Release|x64`) ships alongside the Win32 build. The x64 build has no virtual-address ceiling and enables high-entropy ASLR, DEP, and `/DYNAMICBASE`. The Win32 build continues as a maintenance target.
+4. ~~**ASLR is explicitly disabled**~~ **Resolved for x64 in v8.0.0** — `DYNAMICBASE` + `HIGHENTROPYVA` + `NXCOMPAT` are all enabled on the x64 config. The Win32 release build retains the original settings for binary compatibility with the existing 32-bit deployment base.
+5. ~~**DEP/NX is explicitly disabled**~~ **Resolved for x64 in v8.0.0** — see item 4.
 6. **Passwords hashed with SHA-1 (no salt)**. SHA-1 is broken for password storage; modern alternatives require bcrypt, scrypt, or Argon2.
 7. **IPv4 only**. The codebase is hardcoded to `AF_INET`/`sockaddr_in`. IPv6 is not supported.
 8. **Win32 message window dependency**. The async I/O dispatch relies on a hidden Win32 message window, a design pattern unsuitable for modern server applications.
@@ -405,7 +405,7 @@ The following changes are recommended in rough priority order:
 
 ### High Priority (Stability / Safety)
 
-6. **Port to 64-bit** – Add an `x64` platform target. Eliminate all `(ULONG)` pointer casts in `Memory.c` (use `(UINTPTR_T)` / `SIZE_T`). This is a prerequisite for modern Windows hardening features.
+6. ~~**Port to 64-bit**~~ **Done in v8.0.0** – Native AMD64 build ships. All pointer-truncation issues identified in the audit have been resolved. `DC_MESSAGE_WIRE` / `ONLINEDATA_WIRE` provide a cross-architecture IPC wire format. External tools (ioNiNJA, sitewho, etc.) must be rebuilt against the v8.0 headers.
 7. **Enable Buffer Security Check (`/GS`)** – Currently disabled in Debug config; enable across all configurations.
 8. **Replace spin-lock busy-waits** – Replace `while (InterlockedExchange(&lock, TRUE)) SwitchToThread()` with proper `CRITICAL_SECTION` or `SRWLock` usage.
 9. **Fix `DummyEncode` unsigned underflow** – Guard the loop with an early-out if `dwIn < 4`.
@@ -418,4 +418,3 @@ The following changes are recommended in rough priority order:
 13. **Replace INI-file user database** – Consider SQLite or a structured binary format with proper locking semantics.
 14. **Remove commented-out dead code** – `Unused-code.txt`, commented `BindSocketToDevice`, `UnbindSocket`, deadlock detection.
 15. **Replace `wsprintf` with safe alternatives** – Use `StringCbPrintf` or `snprintf_s`.
-

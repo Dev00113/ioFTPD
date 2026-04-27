@@ -159,7 +159,7 @@ BOOL ioOpenFile(LPIOFILE lpFile, DWORD dwClientId, LPSTR szFileName,
 	lpFile->lpDeviceInformation	= &DeviceInformation[GetDeviceID(szFileName)];
 	lpFile->Overlapped.hFile	= lpFile;
 
-	dwFileName = _tcslen(szFileName);
+	dwFileName = (DWORD)_tcslen(szFileName);
 	if (dwDesiredAccess & GENERIC_WRITE)
 	{
 		// we want to be able to write to the file, so try to acquire a lock on the name
@@ -198,7 +198,7 @@ BOOL ioOpenFile(LPIOFILE lpFile, DWORD dwClientId, LPSTR szFileName,
 	}
 
 	//	Bind to completion port
-	if (! CreateIoCompletionPort(lpFile->FileHandle, hCompletionPort, (DWORD)-1, 0))
+	if (! CreateIoCompletionPort(lpFile->FileHandle, hCompletionPort, (ULONG_PTR)-1, 0))
 	{
 		dwLastError	= GetLastError();
 		goto error;
@@ -339,7 +339,7 @@ VOID IoReadFile(LPIOFILE lpFile, LPVOID lpBuffer, DWORD dwBuffer)
 		(dwResult = GetLastError()) != ERROR_IO_PENDING)
 	{
 		lpFile->Overlapped.Internal	= dwResult;
-		PostQueuedCompletionStatus(hCompletionPort, 0, (DWORD)-5, (LPOVERLAPPED)&lpFile->Overlapped);
+		PostQueuedCompletionStatus(hCompletionPort, 0, (ULONG_PTR)-5, (LPOVERLAPPED)&lpFile->Overlapped);
 	}
 }
 
@@ -379,7 +379,7 @@ VOID IoWriteFile(LPIOFILE lpFile, LPVOID lpBuffer, DWORD dwBuffer)
 		(dwBytesWritten = GetLastError()) != ERROR_IO_PENDING)
 	{
 		lpFile->Overlapped.Internal	= dwBytesWritten;
-		PostQueuedCompletionStatus(hCompletionPort, 0, (DWORD)-5, (LPOVERLAPPED)&lpFile->Overlapped);
+		PostQueuedCompletionStatus(hCompletionPort, 0, (ULONG_PTR)-5, (LPOVERLAPPED)&lpFile->Overlapped);
 	}
 }
 
@@ -415,7 +415,7 @@ VOID PopIOQueue(LPIOFILE hFile)
 		if (! bResult && (dwResult = GetLastError()) != ERROR_IO_PENDING)
 		{
 			lpOverlapped->Internal	= dwResult;
-			PostQueuedCompletionStatus(hCompletionPort, 0, (DWORD)-5, (LPOVERLAPPED)lpOverlapped);
+			PostQueuedCompletionStatus(hCompletionPort, 0, (ULONG_PTR)-5, (LPOVERLAPPED)lpOverlapped);
 		}
 	}
 }

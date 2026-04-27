@@ -19,8 +19,9 @@
  * MA 02110-1301, USA.
  */
 
+#ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600  // Vista minimum
-//#define	_WIN32_WINNT	0x0501
+#endif
 
 #include <Tchar.h>
 #include <Winsock2.h>
@@ -99,6 +100,16 @@
 #define	CopyString	strcpy
 #define HEAD	0
 #define TAIL	1
+
+// Atomic SOCKET exchange — SOCKET is UINT_PTR (not a pointer), so InterlockedExchangePointer's
+// PVOID cast is a strict-aliasing violation. Use the correctly-typed interlocked for each arch.
+#ifdef _M_X64
+#define IoAtomicExchangeSocket(pSock, val) \
+    ((SOCKET)_InterlockedExchange64((volatile LONG64 *)(pSock), (LONG64)(val)))
+#else
+#define IoAtomicExchangeSocket(pSock, val) \
+    ((SOCKET)(UINT_PTR)InterlockedExchange((volatile LONG *)(pSock), (LONG)(UINT_PTR)(val)))
+#endif
 
 
 #define DAEMON_ACTIVE	0

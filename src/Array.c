@@ -161,7 +161,7 @@ LPVOID QuickDelete(LPVOID *List, INT Items, LPVOID Item, QUICKCOMPAREPROC Comp, 
 
 		if (! Check || ! Check(Return))
 		{
-			iSize	= &List[Items] - &Result[1];
+			iSize	= (INT)(&List[Items] - &Result[1]);
 			MoveMemory(&Result[0], &Result[1], iSize * sizeof(LPVOID));
 		}
 		return Return;
@@ -183,7 +183,7 @@ LPVOID QuickDeleteIndex(LPVOID *List, INT Items, INT dwPos)
 	Result = &List[dwPos-1];
 	Return = Result[0];
 
-	iSize	= &List[Items] - &Result[1];
+	iSize	= (int)(&List[Items] - &Result[1]);
 	MoveMemory(&Result[0], &Result[1], iSize * sizeof(LPVOID));
 	return Return;
 }

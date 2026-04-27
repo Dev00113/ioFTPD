@@ -25,7 +25,6 @@
 #define WM_PHANDLE			(WM_USER + 17)
 #define	WM_SHMEM			(WM_USER + 101)
 #define WM_PID                          (WM_USER + 18)
-#define	WM_DATACOPY_SHELLALLOC		(WM_USER + 19)
 #define	WM_DATACOPY_FREE		(WM_USER + 20)
 #define WM_DATACOPY_FILEMAP		(WM_USER + 21)
 #define WM_ACCEPTEX			(WM_USER + 22)
@@ -82,6 +81,47 @@ typedef struct _ONLINEDATA
 
 } ONLINEDATA, * PONLINEDATA;
 
+
+// Cross-process wire format for ONLINEDATA.
+// Replaces LPTSTR pointer fields (size varies by architecture) with UINT32 counts.
+// Widens dwBytesTransfered to UINT64.  Layout is identical on 32-bit and 64-bit MSVC
+// because no pointer-sized fields remain (largest field is UINT64/INT64 → 8-byte alignment
+// on both targets).  External tools must use this struct when reading DC_ONLINEDATA.
+typedef struct _ONLINEDATA_WIRE {
+	INT32		Uid;
+
+	UINT32		dwFlags;
+	TCHAR		tszServiceName[_MAX_NAME + 1];
+	TCHAR		tszAction[64];
+
+	ULONG		ulClientIp;
+	USHORT		usClientPort;
+
+	CHAR		szHostName[MAX_HOSTNAME];
+	CHAR		szIdent[MAX_IDENT];
+
+	TCHAR		tszVirtualPath[_MAX_PWD + 1];
+	UINT32		dwRealPathLen;			// char count of real path string appended after DC_ONLINEDATA
+
+	DWORD		dwOnlineTime;
+	DWORD		dwIdleTickCount;
+
+	BYTE		bTransferStatus;
+	USHORT		usDeviceNum;
+	ULONG		ulDataClientIp;
+	USHORT		usDataClientPort;
+
+	TCHAR		tszVirtualDataPath[_MAX_PWD + 1];
+	UINT32		dwRealDataPathLen;		// char count of real data path string appended after real path
+
+	UINT64		qwBytesTransfered;		// bytes transferred during interval (was DWORD — no 4GB cap)
+	DWORD		dwIntervalLength;
+	INT64		i64TotalBytesTransfered;
+
+} ONLINEDATA_WIRE, *PONLINEDATA_WIRE;
+
+
+static_assert(sizeof(ONLINEDATA_WIRE) == 1384, "ONLINEDATA_WIRE size changed — update all external tools and this assertion");
 
 HWND GetMainWindow(VOID);
 BOOL InstallMessageHandler(DWORD dwMessage, LPVOID lpProc, BOOL bInstantOperation, BOOL bIgnoreShutdown);

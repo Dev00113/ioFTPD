@@ -21,6 +21,19 @@
 
 #include <ioFTPD.h>
 
+#ifdef _DEBUG_MEM
+typedef struct _MEM_DEBUG_HEADER {
+	LPVOID  lpNext;       /* free-chain next pointer (pointer-sized, always aligned) */
+	DWORD   dwBucket;     /* bucket index */
+	DWORD   dwCanaryPre;  /* 0xFFFFFFFF when block is live */
+	/* user data follows immediately; post-allocation canary (0xFFFFFFFF) appended after */
+} MEM_DEBUG_HEADER;
+#ifdef _M_X64
+static_assert(sizeof(MEM_DEBUG_HEADER) == 16, "MEM_DEBUG_HEADER must be 16 bytes on x64");
+#else
+static_assert(sizeof(MEM_DEBUG_HEADER) == 12, "MEM_DEBUG_HEADER must be 12 bytes on x86");
+#endif
+#endif /* _DEBUG_MEM */
 
 static HANDLE				ioHeap;
 static CRITICAL_SECTION	BucketLock;
@@ -55,14 +68,17 @@ LPVOID _FragmentAllocate(register DWORD Bucket)
 		//	Allocate Block
 Bucket_Allocation:
 #ifdef _DEBUG_MEM
-		if ((Memory = (ULONG_PTR)HeapAlloc(ioHeap, 0, (Bucket >= MEMORY_BUCKETS ? Bucket : BucketSize[Bucket]) + 2 * sizeof(DWORD) + sizeof(LPVOID))))
 		{
-			//	Successfully allocated
-			((LPDWORD)Memory)[0]	= 0xFFFFFFFF;
-			((LPDWORD)Memory)[1]	= Bucket;
-			((LPDWORD)(Memory + sizeof(LPVOID) + sizeof(DWORD) + (Bucket >= MEMORY_BUCKETS ? Bucket : BucketSize[Bucket])))[0]	= 0xFFFFFFFF;
-			//	Set return offset
-			Memory	+= sizeof(LPVOID) + sizeof(DWORD);
+			DWORD cbData = (Bucket >= MEMORY_BUCKETS ? Bucket : BucketSize[Bucket]);
+			if ((Memory = (ULONG_PTR)HeapAlloc(ioHeap, 0, sizeof(MEM_DEBUG_HEADER) + cbData + sizeof(DWORD))))
+			{
+				MEM_DEBUG_HEADER *pHdr = (MEM_DEBUG_HEADER *)Memory;
+				pHdr->lpNext      = NULL;
+				pHdr->dwBucket    = Bucket;
+				pHdr->dwCanaryPre = 0xFFFFFFFF;
+				((LPDWORD)(Memory + sizeof(MEM_DEBUG_HEADER) + cbData))[0] = 0xFFFFFFFF;
+				Memory += sizeof(MEM_DEBUG_HEADER);
+			}
 		}
 #else
 		if ((Memory = (ULONG_PTR)HeapAlloc(ioHeap, 0, (Bucket >= MEMORY_BUCKETS ? Bucket : BucketSize[Bucket]) + sizeof(LPVOID))))
@@ -84,7 +100,7 @@ Bucket_Allocation:
 			if (MemoryBucket[Memory + Bucket])
 			{
 				//	Suitable bucket found
-				Bucket	+= Memory;
+				Bucket	+= (DWORD)Memory;
 				goto Bucket_Reuse;
 			}
 		}
@@ -97,12 +113,13 @@ Bucket_Allocation:
 Bucket_Reuse:
 		Memory	= (ULONG_PTR)MemoryBucket[Bucket];
 #ifdef _DEBUG_MEM
-		//	Push bucket by one
-		MemoryBucket[Bucket]	= ((LPVOID *)(Memory + sizeof(DWORD)))[0];
-		//	Store bucket number
-		((LPDWORD)Memory)[1]	= Bucket;
-		//	Set return offset
-		Memory	+= sizeof(LPVOID) + sizeof(DWORD);
+		{
+			MEM_DEBUG_HEADER *pHdr = (MEM_DEBUG_HEADER *)Memory;
+			MemoryBucket[Bucket] = pHdr->lpNext;
+			pHdr->dwBucket       = Bucket;
+			pHdr->dwCanaryPre    = 0xFFFFFFFF;
+			Memory += sizeof(MEM_DEBUG_HEADER);
+		}
 #else
 		//	Push bucket by one
 		MemoryBucket[Bucket]	= ((LPVOID *)Memory)[0];
@@ -129,13 +146,16 @@ VOID _FragmentFree(register LPVOID Memory, register DWORD Bucket)
 	LPVOID	Last;
 
 #ifdef _DEBUG_MEM
-	TCHAR	MemoryOffset[128];
-
-	if (((LPDWORD)Memory)[0] != 0xFFFFFFFF ||
-		((LPDWORD)((ULONG_PTR)Memory + sizeof(LPVOID) + sizeof(DWORD) + (Bucket >= MEMORY_BUCKETS ? Bucket : BucketSize[Bucket])))[0] != 0xFFFFFFFF)
-	{	
-		wsprintf(MemoryOffset, "0x%X", Memory);
-		MessageBox(NULL, MemoryOffset, "Corrupted memory block", 0);
+	{
+		TCHAR MemoryOffset[128];
+		DWORD cbData = (Bucket >= MEMORY_BUCKETS ? Bucket : BucketSize[Bucket]);
+		MEM_DEBUG_HEADER *pHdr = (MEM_DEBUG_HEADER *)Memory;
+		if (pHdr->dwCanaryPre != 0xFFFFFFFF ||
+			((LPDWORD)((ULONG_PTR)Memory + sizeof(MEM_DEBUG_HEADER) + cbData))[0] != 0xFFFFFFFF)
+		{
+			wsprintf(MemoryOffset, "0x%IX", (ULONG_PTR)Memory);
+			MessageBox(NULL, MemoryOffset, "Corrupted memory block", 0);
+		}
 	}
 #endif
 	//	Freed
@@ -145,7 +165,7 @@ VOID _FragmentFree(register LPVOID Memory, register DWORD Bucket)
 	{
 		//	Store memory for reuse
 #ifdef _DEBUG_MEM
-		((LPVOID *)((ULONG_PTR)Memory + sizeof(DWORD)))[0]	= MemoryBucket[Bucket];
+		((MEM_DEBUG_HEADER *)Memory)->lpNext = MemoryBucket[Bucket];
 		MemoryBucket[Bucket]	= Memory;
 #else
 		((LPVOID *)Memory)[0]	= MemoryBucket[Bucket];
@@ -164,7 +184,7 @@ MemoryCleanUp:
 					Last	= Memory;
 					//	Get next address
 #ifdef _DEBUG_MEM
-					Memory	= ((LPVOID *)((ULONG_PTR)Memory + sizeof(DWORD)))[0];
+					Memory	= ((MEM_DEBUG_HEADER *)Memory)->lpNext;
 #else
 					Memory	= ((LPVOID *)Memory)[0];
 #endif
@@ -221,9 +241,9 @@ BOOL FragmentFree(register LPVOID lpMemory)
 	if (! lpMemory) return FALSE;
 #ifdef _DEBUG_MEM
 	//	Caclulate memory offset
-	lpMemory	= (LPVOID)((ULONG_PTR)lpMemory - sizeof(LPVOID) - sizeof(DWORD));
+	lpMemory	= (LPVOID)((ULONG_PTR)lpMemory - sizeof(MEM_DEBUG_HEADER));
 	//	Get bucket
-	Bucket	= ((LPDWORD)lpMemory)[1];
+	Bucket	= ((MEM_DEBUG_HEADER *)lpMemory)->dwBucket;
 #else
 	//	Caclulate memory offset
 	lpMemory	= (LPVOID)((ULONG_PTR)lpMemory - sizeof(LPVOID));
@@ -254,8 +274,8 @@ LPVOID FragmentReAllocate(LPVOID lpMem, DWORD Size)
 
 	//	Get old bucket
 #ifdef _DEBUG_MEM
-	OldMemory	= (LPVOID)((ULONG_PTR)lpMem - sizeof(LPVOID) - sizeof(DWORD));
-	OldBucket	= ((LPDWORD)OldMemory)[1];
+	OldMemory	= (LPVOID)((ULONG_PTR)lpMem - sizeof(MEM_DEBUG_HEADER));
+	OldBucket	= ((MEM_DEBUG_HEADER *)OldMemory)->dwBucket;
 #else
 	OldMemory	= (LPVOID)((ULONG_PTR)lpMem - sizeof(LPVOID));
 	OldBucket	= ((LPDWORD)OldMemory)[0];

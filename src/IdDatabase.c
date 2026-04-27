@@ -100,8 +100,8 @@ BOOL IdDataBase_Init(LPTSTR tszTableLocation, LPIDDATABASE lpDataBase,
     tszName      = tpLine;
     tszModuleName  = &tpDoubleColon[1][1];
     //  Calculate string lengths
-    dwName      = tpDoubleColon[0] - tszName;
-    dwModuleName  = &tpNewline[(tpNewline[-1] == _TEXT('\r') ? -1 : 0)] - tszModuleName;
+    dwName      = (DWORD)(tpDoubleColon[0] - tszName);
+    dwModuleName  = (DWORD)(&tpNewline[(tpNewline[-1] == _TEXT('\r') ? -1 : 0)] - tszModuleName);
     //  Add zero paddings
     tszModuleName[dwModuleName]  = _TEXT('\0');
     tszName[dwName]  = _TEXT('\0');
@@ -224,7 +224,7 @@ BOOL IdDataBase_Write(LPIDDATABASE lpDataBase)
   BOOL    bReturn;
 
   bReturn    = TRUE;
-  dwFileName  = strlen(lpDataBase->tszFileName);
+  dwFileName  = (DWORD)strlen(lpDataBase->tszFileName);
   //  Allocate buffer for temporary filename
   tszFileName  = (LPSTR)Allocate(NULL, dwFileName + 5);
   if (! tszFileName) return TRUE;
@@ -388,7 +388,7 @@ BOOL IdDataBase_Rename(LPTSTR tszName, LPTSTR tszModuleName, LPTSTR tszNewName, 
 
 
   //  Prepare search item
-  lpId  = (LPIDITEM)((ULONG)tszName - offsetof(IDITEM, tszName));
+  lpId  = (LPIDITEM)((ULONG_PTR)tszName - offsetof(IDITEM, tszName));
 
   AcquireExclusiveLock(&lpDataBase->loDataBase);
   //  Binary search
@@ -404,7 +404,7 @@ BOOL IdDataBase_Rename(LPTSTR tszName, LPTSTR tszModuleName, LPTSTR tszNewName, 
       //  Reduce size
       lpDataBase->dwIdArrayItems--;
       //  Calculate number of bytes to move
-      dwBytesToMove  = (ULONG)&lpDataBase->lpIdArray[lpDataBase->dwIdArrayItems] - (ULONG)lpResult;
+      dwBytesToMove  = (DWORD)((ULONG_PTR)&lpDataBase->lpIdArray[lpDataBase->dwIdArrayItems] - (ULONG_PTR)lpResult);
       //  Remove item from array
       MoveMemory(lpResult, &lpResult[1], dwBytesToMove);
       //  Update name
@@ -452,7 +452,7 @@ BOOL IdDataBase_Remove(LPTSTR tszName, LPTSTR tszModuleName, LPIDDATABASE lpData
   DWORD      dwError;
 
   //  Prepare search item
-  lpId  = (LPIDITEM)((ULONG)tszName - offsetof(IDITEM, tszName));
+  lpId  = (LPIDITEM)((ULONG_PTR)tszName - offsetof(IDITEM, tszName));
 
   AcquireExclusiveLock(&lpDataBase->loDataBase);
   //  Binary search
@@ -469,7 +469,7 @@ BOOL IdDataBase_Remove(LPTSTR tszName, LPTSTR tszModuleName, LPIDDATABASE lpData
       //  Reduce size
       lpDataBase->dwIdArrayItems--;
       //  Calculate number of bytes to move
-      dwBytesToMove  = (ULONG)&lpDataBase->lpIdArray[lpDataBase->dwIdArrayItems] - (ULONG)lpResult;
+      dwBytesToMove  = (DWORD)((ULONG_PTR)&lpDataBase->lpIdArray[lpDataBase->dwIdArrayItems] - (ULONG_PTR)lpResult);
       //  Remove item from array
       MoveMemory(lpResult, &lpResult[1], dwBytesToMove);
       //  Update id database
@@ -549,7 +549,7 @@ IdDataBase_SearchByName(LPTSTR tszName,
   }
 
   //  Prepare search item
-  lpSearch  = (LPIDITEM)((ULONG)tszName - offsetof(IDITEM, tszName));
+  lpSearch  = (LPIDITEM)((ULONG_PTR)tszName - offsetof(IDITEM, tszName));
 
   AcquireSharedLock(&lpDataBase->loDataBase);
   //  Binary search

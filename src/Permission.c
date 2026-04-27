@@ -110,13 +110,13 @@ INT CheckPermissions(LPSTR szUserName, PINT32 lpGroups,
 
 		case '=':
 			//	Group
-			dwLength	= pNewOffset - ++pOffset;
+			dwLength	= (DWORD)(pNewOffset - ++pOffset);
 
 			for (i = 0;i < MAX_GROUPS && lpGroups[i] != -1;i++)
 			{
 				if (szGroupName = Gid2Group(lpGroups[i]))
 				{
-					dwGroupName = strlen(szGroupName);
+					dwGroupName = (DWORD)strlen(szGroupName);
 					// changed from !memcmp(pOffset, szGroupName, dwLength) && szGroupName[dwLength] == 0
 					// to make purify happy
 					if (dwGroupName == dwLength && ! memcmp(pOffset, szGroupName, dwLength))
@@ -130,11 +130,11 @@ INT CheckPermissions(LPSTR szUserName, PINT32 lpGroups,
 
 		case '-':
 			//	User
-			dwLength	= pNewOffset - ++pOffset;
+			dwLength	= (DWORD)(pNewOffset - ++pOffset);
 			if (!dwUserName)
 			{
 				if (!szUserName) break;
-				dwUserName = strlen(szUserName);
+				dwUserName = (DWORD)strlen(szUserName);
 			}
 
 			if (dwUserName == dwLength && ! memcmp(szUserName, pOffset, dwLength))
@@ -144,8 +144,8 @@ INT CheckPermissions(LPSTR szUserName, PINT32 lpGroups,
 			break;
 
 		default:
-			dwLength	= pNewOffset - pOffset;
-			i			= strlen(szUserFlags);
+			dwLength	= (DWORD)(pNewOffset - pOffset);
+			i			= (INT)strlen(szUserFlags);
 
 			for (;dwLength--;)
 			{

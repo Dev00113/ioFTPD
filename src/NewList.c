@@ -180,7 +180,7 @@ static BOOL List_PrintLong(LPLISTING lpListing, LPTSTR tszFileName, BOOL bDotDir
 		{
 			tszRealPath = &lpFileInfo->tszFileName[lpFileInfo->dwFileName+1];
 		}
-		dwRealPath = _tcslen(tszRealPath);
+		dwRealPath = (DWORD)_tcslen(tszRealPath);
 		if ((lpFileInfo->dwFileAttributes & FILE_ATTRIBUTE_MASK) && dwRealPath)
 		{
 			// it's a valid link so recover the real directory path and then try to reverse it
@@ -193,7 +193,7 @@ static BOOL List_PrintLong(LPLISTING lpListing, LPTSTR tszFileName, BOOL bDotDir
 						// the path is exported and reversible
 						dwItem--;
 						lpEntries = lpListing->hMountFile->lpMountTable->lpEntries;
-						dwFileName = _tcslen(tszFileName);
+						dwFileName = (DWORD)_tcslen(tszFileName);
 						dwLen = dwRealPath - lpEntries->lpRealItemArray[dwItem]->dwFileName;
 						if ((dwRealPath < lpEntries->lpRealItemArray[dwItem]->dwFileName) ||
 							((dwLen+lpEntries->VirtualItemArray[dwItem].dwFileName)+dwFileName+1 > sizeof(tszVfsLink)))
@@ -299,7 +299,7 @@ static BOOL List_PrintLong(LPLISTING lpListing, LPTSTR tszFileName, BOOL bDotDir
 		{
 			if (tszTemp = (LPTSTR)FindFileContext(PRIVATE, &lpFileInfo->Context))
 			{
-				dwLen = _tcslen(tszTemp);
+				dwLen = (DWORD)_tcslen(tszTemp);
 				if ((dwLen+1) > sizeof(tPerms)/sizeof(TCHAR))
 				{
 					tszGroupName = _T("-too-long-");
@@ -822,7 +822,7 @@ BOOL InitListing(LPLISTING lpListing, BOOL bNoVirtual)
 		}
 		else
 		{
-			uPathLen = _tcslen(szPath);
+			uPathLen = (UINT)_tcslen(szPath);
 			if (uPathLen && szPath[uPathLen-1] == _T('/'))
 			{
 				bHasEndSlash = TRUE;
@@ -1045,7 +1045,7 @@ BOOL InitListing(LPLISTING lpListing, BOOL bNoVirtual)
 		{
 			// it resolved! which means we should be listing the contents of the target instead!
 			strncpy_s(lpDL->vpVirtPath.pwd, sizeof(lpDL->vpVirtPath.pwd), lpListing->lpVirtualDir->szTarget, _TRUNCATE);
-			lpDL->vpVirtPath.len = strlen(lpDL->vpVirtPath.pwd);
+			lpDL->vpVirtPath.len = (DWORD)strlen(lpDL->vpVirtPath.pwd);
 		}
 		lpListing->dwFlags |= LIST_VIRTUAL_DIR;
 	}
@@ -1706,7 +1706,7 @@ BOOL ListNextDir(LPLISTING lpList)
 					while(*pOffset) *pTarget++ = *pOffset++;
 					*pTarget++ = _T('/');
 					*pTarget = 0;
-					lpDirNew->vpVirtPath.len = (pTarget - lpDirNew->vpVirtPath.pwd)/sizeof(TCHAR);
+					lpDirNew->vpVirtPath.len = (DWORD)((pTarget - lpDirNew->vpVirtPath.pwd)/sizeof(TCHAR));
 
 					// Relative Path = original + / + name ; unless original == just /
 					pOffset = lpDir->szRelativeVPathName;
@@ -1911,7 +1911,7 @@ LPLISTING List_ParseCmdLine(IO_STRING *Args, PVIRTUALPATH lpVPath, MOUNTFILE hMo
 	}
 	else
 	{
-		iCmdLen = strnlen(szCmdLine,_MAX_PWD+1);
+		iCmdLen = (int)strnlen(szCmdLine,_MAX_PWD+1);
 		if (iCmdLen >= _MAX_PWD)
 		{
 			// string is just too long... bail now
@@ -1964,7 +1964,7 @@ BOOL FTP_MLSD(LPFTPUSER lpUser, IO_STRING *Args)
 	{
 		tszGlob = GetStringRange(Args, STR_BEGIN, STR_END);
 	}
-	dwLen = _tcslen(tszGlob);
+	dwLen = (DWORD)_tcslen(tszGlob);
 
 	if (!(lpListing = (LPLISTING)Allocate("lpListing", sizeof(LISTING) + (dwLen + 2)*sizeof(TCHAR))))
 	{

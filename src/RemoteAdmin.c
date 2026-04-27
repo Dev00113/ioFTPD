@@ -1095,8 +1095,8 @@ AddIpToUser(LPUSERFILE lpAdmin, LPTSTR tszAdminName, LPUSERFILE lpUserFile, LPTS
 		{
 			break;
 		}
-		if (4 != _stscanf_s(tszLine, _T("%u %u %u %[^\n]"), &dwIdentRequired, &dwHostType, &dwMinFields, 
-			tszPerms, sizeof(tszPerms)))
+		if (4 != _stscanf_s(tszLine, _T("%lu %lu %lu %[^\n]"), &dwIdentRequired, &dwHostType, &dwMinFields,
+			tszPerms, (unsigned)sizeof(tszPerms)))
 		{
 			// bad settings
 			Putlog(LOG_ERROR, _TEXT("Bad .ini file settings: '%s'\r\n"), tszSecure);
@@ -1224,8 +1224,8 @@ ShowAddIpRules(LPUSERFILE lpUserFile, LPBUFFER lpBuffer, LPTSTR tszMultilinePref
 		{
 			break;
 		}
-		if (4 != _stscanf_s(tszLine, "%u %u %u %[^\n]", &dwIdentRequired, &dwHostType, &dwMinFields, 
-			tszPerms, sizeof(tszPerms)))
+		if (4 != _stscanf_s(tszLine, "%lu %lu %lu %[^\n]", &dwIdentRequired, &dwHostType, &dwMinFields,
+			tszPerms, (unsigned)sizeof(tszPerms)))
 		{
 			continue;
 		}
@@ -1234,8 +1234,8 @@ ShowAddIpRules(LPUSERFILE lpUserFile, LPBUFFER lpBuffer, LPTSTR tszMultilinePref
 			bHeaderShown = TRUE;
 			FormatString(lpBuffer, _TEXT("%sList of IP/host mask rules:\r\n"), tszMultilinePrefix);
 		}
-		if (4 != _stscanf_s(tszLine, "%u %u %u %[^\n]", &dwIdentRequired, &dwHostType, &dwMinFields, 
-			tszPerms, sizeof(tszPerms)))
+		if (4 != _stscanf_s(tszLine, "%lu %lu %lu %[^\n]", &dwIdentRequired, &dwHostType, &dwMinFields,
+			tszPerms, (unsigned)sizeof(tszPerms)))
 		{
 			continue;
 		}
@@ -2123,7 +2123,7 @@ LPTSTR Admin_Close(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRING Args
 
 		if (tszMsg)
 		{
-			n = _tcslen(tszMsg)+sizeof(*tszMsg);
+			n = (DWORD)_tcslen(tszMsg)+sizeof(*tszMsg);
 			tszNew = AllocateShared(NULL, "CloseMsg", n);
 			if (tszNew)
 			{
@@ -2624,7 +2624,7 @@ VOID RecursiveAction(LPUSERFILE lpUserFile, MOUNTFILE hMountFile, LPTSTR lpPath,
 		SetLastError(ERROR_BUFFER_OVERFLOW);
 		goto PWD_ISSUE;
 	}
-	vpPath.len = _tcslen(vpPath.pwd);
+	vpPath.len = (DWORD)_tcslen(vpPath.pwd);
 	stPWD -= vpPath.len;
 
 	dwVirtLastPos = 0;
@@ -2656,7 +2656,7 @@ VOID RecursiveAction(LPUSERFILE lpUserFile, MOUNTFILE hMountFile, LPTSTR lpPath,
 			SetLastError(ERROR_BUFFER_OVERFLOW);
 			goto REAL_ISSUE;
 		}
-		vpPath.l_RealPath = _tcslen(tszResolvedPath);
+		vpPath.l_RealPath = (DWORD)_tcslen(tszResolvedPath);
 		stReal -= vpPath.l_RealPath;
 		if (stReal <= 1)
 		{
@@ -3354,7 +3354,7 @@ LPTSTR Admin_ChangeFileAttributes(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, L
 	case 3:
 		tszCommand	= GetStringIndexStatic(Args, 1);
 		tszFileToUpdate	= GetStringIndex(Args, 2);
-		dwFileToUpdate	= GetStringIndexLength(Args, 2);
+		dwFileToUpdate	= (DWORD)GetStringIndexLength(Args, 2);
 		//	Remove quotes
 		if (tszFileToUpdate[0] == _TEXT('\"') &&
 			tszFileToUpdate[dwFileToUpdate - 1] == _TEXT('\"'))
@@ -3434,9 +3434,9 @@ LPTSTR Admin_ChangeFileAttributes(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, L
 	case 4:
 		tszCommand	= GetStringIndexStatic(Args, 1);
 		tszFileToUpdate	= GetStringIndexStatic(Args, 2);
-		dwFileToUpdate	= GetStringIndexLength(Args, 2);
+		dwFileToUpdate	= (DWORD)GetStringIndexLength(Args, 2);
 		tszData	= GetStringIndexStatic(Args, 3);
-		dwData	= GetStringIndexLength(Args, 3);
+		dwData	= (DWORD)GetStringIndexLength(Args, 3);
 
 		//	Remove quotes
 		if (tszFileToUpdate[0] == _TEXT('\"') &&
@@ -3620,7 +3620,7 @@ VOID Display_UserInfo(LPFTPUSER lpUser, LPUSERFILE lpUserFile, LPTSTR tszBasePat
 		return;
 	}
 	// allocated with an extra space to handle the longer name below, so trim it off now
-	dwLen = _tcslen(tszFileName);
+	dwLen = (DWORD)_tcslen(tszFileName);
 	tszFileName[dwLen-1] = 0;
 
 	UserFile_Plus.lpUserFile = lpUserFile;
@@ -4257,7 +4257,7 @@ static BOOL ParseVfsPerms(LPCONFIG_LINE lpLine, LPTSTR tszPathBuf, LPTSTR *ptszP
 	{
 		//	Find second quote
 		tszAccessList	= (LPTSTR)_tmemchr(++tszPath, _TEXT('"'), lpLine->Value_l - 1);
-		dwPath	= &tszAccessList[-1] - tszPath;
+		dwPath	= (DWORD)(&tszAccessList[-1] - tszPath);
 	}
 	else
 	{
@@ -4267,7 +4267,7 @@ static BOOL ParseVfsPerms(LPCONFIG_LINE lpLine, LPTSTR tszPathBuf, LPTSTR *ptszP
 			//	Find first '\t'
 			tszAccessList	= (LPSTR)_tmemchr(&tszPath[1], _TEXT('\t'), lpLine->Value_l - 1);
 		}
-		dwPath	= tszAccessList - tszPath;
+		dwPath	= (DWORD)(tszAccessList - tszPath);
 	}
 
 	if (!tszAccessList++)
@@ -4945,7 +4945,7 @@ LPTSTR Admin_Permissions(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRIN
 							tszPath++;
 						}
 
-						dwLen = _tcslen(PathBuffer2);
+						dwLen = (DWORD)_tcslen(PathBuffer2);
 						if (bMatch && (dwLen < vpPath.len) && (dwLen < dwMinPath))
 						{
 							// skip rules that are more general than the ones already displayed as they
@@ -5429,12 +5429,12 @@ VOID Progress_Update(LPCMD_PROGRESS lpProgress)
 	if (lpProgress->tszMultilinePrefix)
 	{
 		strcpy_s(Buffer, sizeof(Buffer), lpProgress->tszMultilinePrefix);
-		dwLen = strlen(Buffer);
+		dwLen = (DWORD)strlen(Buffer);
 	}
 	// pass it 3 args though format string may ignore them
 	sprintf_s(&Buffer[dwLen], sizeof(Buffer)-dwLen, lpProgress->tszFormatString,
 		lpProgress->dwArg1, lpProgress->dwArg2, lpProgress->dwArg3, lpProgress->dwArg4);
-	dwLen = strlen(Buffer);
+	dwLen = (DWORD)strlen(Buffer);
 
 	SendQuick(&lpProgress->lpCommand->Socket, Buffer, dwLen);
 	lpProgress->dwTicks = GetTickCount() + lpProgress->dwDelay;
@@ -5719,7 +5719,7 @@ LPTSTR Admin_Verify(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRING Arg
 			{
 				continue;
 			}
-			iResult = sscanf_s(FindData.cFileName, "%d%c", &Gid, &cTemp);
+			iResult = sscanf_s(FindData.cFileName, "%d%c", &Gid, &cTemp, 1);
 			if (iResult == 1)
 			{
 				for( n=0 ; n<dwGids ; n++ )
@@ -5909,7 +5909,7 @@ LPTSTR Admin_Verify(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRING Arg
 			{
 				continue;
 			}
-			iResult = sscanf_s(FindData.cFileName, "%d%c", &Uid, &cTemp);
+			iResult = sscanf_s(FindData.cFileName, "%d%c", &Uid, &cTemp, 1);
 			if (iResult == 1)
 			{
 				for( n=0 ; n<dwUids ; n++ )

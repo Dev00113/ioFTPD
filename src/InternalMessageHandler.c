@@ -464,7 +464,7 @@ Start_Deadlock_Process()
 	StartUpInfo.dwFlags      = STARTF_USESHOWWINDOW;
 	StartUpInfo.wShowWindow  = SW_HIDE;
 
-	_stprintf(pBuffer, _T("\"%s\\ioFTPD-Watch.exe\" %d %d %d 60"), tszExePath, hMyProcess, hRestartEvent, hRestartHeartbeat);
+	_stprintf(pBuffer, _T("\"%s\\ioFTPD-Watch.exe\" %Iu %Iu %Iu 60"), tszExePath, (UINT_PTR)hMyProcess, (UINT_PTR)hRestartEvent, (UINT_PTR)hRestartHeartbeat);
 
 	//  Create process
 	if (CreateProcess(NULL, pBuffer, 0, 0, TRUE, 0, NULL, 0, &StartUpInfo, &ProcessInformation))
@@ -508,7 +508,7 @@ BOOL Windows_Init(BOOL bFirstInitialization, HINSTANCE *hInstance)
 	hRestartHeartbeat = INVALID_HANDLE_VALUE;
 	dwExitCode        = NO_ERROR;
 
-	ZeroMemory(&lpMessageProc, sizeof(lpMessageProc));
+	ZeroMemory((PVOID)lpMessageProc, sizeof(lpMessageProc));
 	hMessageWindow	= NULL;
 	tszClassName	= Config_Get(&IniConfigFile, _TEXT("Threads"), _TEXT("WindowName"), NULL, NULL);
 	if (! tszClassName) tszClassName	= (LPTSTR)tszDefaultClassName;

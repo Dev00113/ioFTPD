@@ -435,7 +435,7 @@ GetLogicalAddress(PVOID addr, LPTSTR tszModuleName, DWORD dwNameLen, PDWORD pdwS
 	PIMAGE_DOS_HEADER        pDosHdr;
 	PIMAGE_NT_HEADERS        pNtHdr;
 	PIMAGE_SECTION_HEADER    pSectionHdr;
-	DWORD                    pOffset; // SectionHdr uses DWORD for addresses in winnt.h - no idea on 64bit...
+	SIZE_T                   pOffset;
 	DWORD                    i;
 
 	if ( !VirtualQuery(addr, &MBI, sizeof(MBI)) )
@@ -453,7 +453,7 @@ GetLogicalAddress(PVOID addr, LPTSTR tszModuleName, DWORD dwNameLen, PDWORD pdwS
 	pNtHdr       = (PIMAGE_NT_HEADERS)((PCHAR) hModule + pDosHdr->e_lfanew);
 	pSectionHdr  = IMAGE_FIRST_SECTION( pNtHdr );
 
-	pOffset      = (DWORD) addr - (DWORD) hModule;
+	pOffset      = (SIZE_T) addr - (SIZE_T) hModule;
 
 	for (i=0 ; i < pNtHdr->FileHeader.NumberOfSections ; i++, pSectionHdr++ )
 	{
@@ -462,7 +462,7 @@ GetLogicalAddress(PVOID addr, LPTSTR tszModuleName, DWORD dwNameLen, PDWORD pdwS
 		{
 			// address is in this section
 			*pdwSectionNum = i+1;
-			*pdwOffset     = pOffset - pSectionHdr->VirtualAddress;
+			*pdwOffset     = (DWORD)(pOffset - pSectionHdr->VirtualAddress);
 			return TRUE;
 		}
 	}
@@ -545,6 +545,15 @@ WriteStackTrace(MINIDUMP_THREAD_CALLBACK *pThread)
 	ZeroMemory(&SF, sizeof(SF));
 
 	// this only works for I386 machines.
+#ifdef _M_X64
+	dwMachineType = IMAGE_FILE_MACHINE_AMD64;
+	SF.AddrPC.Mode    = AddrModeFlat;
+	SF.AddrPC.Offset    = pThread->Context.Rip;
+	SF.AddrFrame.Mode = AddrModeFlat;
+	SF.AddrFrame.Offset = pThread->Context.Rbp;
+	SF.AddrStack.Mode = AddrModeFlat;
+	SF.AddrStack.Offset = pThread->Context.Rsp;
+#else
 	dwMachineType = IMAGE_FILE_MACHINE_I386;
 	SF.AddrPC.Mode    = AddrModeFlat;
 	SF.AddrPC.Offset    = pThread->Context.Eip;
@@ -552,6 +561,7 @@ WriteStackTrace(MINIDUMP_THREAD_CALLBACK *pThread)
 	SF.AddrFrame.Offset = pThread->Context.Ebp;
 	SF.AddrStack.Mode = AddrModeFlat;
 	SF.AddrStack.Offset = pThread->Context.Esp;
+#endif
 
 	// StackWalk64 claims it can modify the context.  Not sure if we are allowed to modify
 	// the one passed to us via MiniDumpCallback
@@ -702,6 +712,15 @@ LogStackTrace(LPTSTR tszFormat, ...)
 	RtlCaptureContext(&Context);
 
 	// this only works for I386 machines.
+#ifdef _M_X64
+	dwMachineType = IMAGE_FILE_MACHINE_AMD64;
+	SF.AddrPC.Mode      = AddrModeFlat;
+	SF.AddrPC.Offset    = Context.Rip;
+	SF.AddrFrame.Mode   = AddrModeFlat;
+	SF.AddrFrame.Offset = Context.Rbp;
+	SF.AddrStack.Mode   = AddrModeFlat;
+	SF.AddrStack.Offset = Context.Rsp;
+#else
 	dwMachineType = IMAGE_FILE_MACHINE_I386;
 	SF.AddrPC.Mode      = AddrModeFlat;
 	SF.AddrPC.Offset    = Context.Eip;
@@ -709,6 +728,7 @@ LogStackTrace(LPTSTR tszFormat, ...)
 	SF.AddrFrame.Offset = Context.Ebp;
 	SF.AddrStack.Mode   = AddrModeFlat;
 	SF.AddrStack.Offset = Context.Esp;
+#endif
 
 	pSymbol               = (PSYMBOL_INFO) SymbolBuf;
 	pSymbol->SizeOfStruct = sizeof(SYMBOL_INFO);
@@ -1114,10 +1134,12 @@ UnhandledExceptionLogger(LPEXCEPTION_POINTERS lpExceptionInfo)
 	ZeroMemory(&OSVI, sizeof(OSVERSIONINFOEX));
 	OSVI.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
 
+#pragma warning(suppress: 4996)
 	n = GetVersionEx( (OSVERSIONINFO *) &OSVI);
 	if (!n)
 	{
 		OSVI.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+#pragma warning(suppress: 4996)
 		n = GetVersionEx( (OSVERSIONINFO *) &OSVI);
 	}
 

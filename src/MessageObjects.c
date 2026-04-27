@@ -924,7 +924,7 @@ BOOL MessageObject_Position(LPMESSAGEDATA lpData, INT Argc, LPOBJV Argv)
 {
 	INT	iPosition;
 	//	Set position
-	iPosition	= (INT)GETOFFSET(lpData->DataOffsets, DATA_POSITION);
+	iPosition	= (INT)(ULONG_PTR)GETOFFSET(lpData->DataOffsets, DATA_POSITION);
 
 	Put_Buffer_Format(lpData->lpOutBuffer, lpData->szFormat, iPosition);
 	return FALSE;
@@ -1189,7 +1189,7 @@ BOOL MessageObject_Fill(LPMESSAGEDATA lpData, INT Argc, LPOBJV Argv)
 		}
 		else
 		{
-			dwFill = strlen(szFill);
+			dwFill = (DWORD)strlen(szFill);
 		}
 	}
 
@@ -1274,7 +1274,7 @@ BOOL MessageObject_Pad(LPMESSAGEDATA lpData, INT Argc, LPOBJV Argv)
 		}
 		else
 		{
-			dwFill = strlen(szFill);
+			dwFill = (DWORD)strlen(szFill);
 		}
 	}
 
@@ -1750,7 +1750,7 @@ BOOL MessageObject_AdminGroups(LPMESSAGEDATA lpData, INT Argc, LPOBJV Argv)
 			break;
 		}
 		CopyMemory(lpPos, tszGroupName, (stLen+1)*sizeof(TCHAR));
-		iLeft -= stLen;
+		iLeft -= (int)stLen;
 		lpPos += stLen*sizeof(TCHAR);
 	}
 	Put_Buffer_Format(lpData->lpOutBuffer, lpData->szFormat, tszGroupList);
@@ -2118,10 +2118,10 @@ BOOL MessageObject_IF(LPMESSAGEDATA lpData, INT Argc, LPOBJV Argv)
 	}
 
 	// just want to allocate 1 string to pick max of cookie,true,false
-	dwLen  = strlen(szCookie);
-	dwLen2 = strlen(szTrue);
+	dwLen  = (DWORD)strlen(szCookie);
+	dwLen2 = (DWORD)strlen(szTrue);
 	if (dwLen2 > dwLen) dwLen = dwLen2;
-	dwLen2 = (szFalse ? strlen(szFalse) : 0);
+	dwLen2 = (DWORD)(szFalse ? strlen(szFalse) : 0);
 	if (dwLen2 > dwLen) dwLen = dwLen2;
 	dwLen += 2;
 
@@ -3334,7 +3334,7 @@ DWORD MessageObject_Compile(LPMESSAGEDATA lpData, LPBYTE lpBuffer)
 		Free(Argv);
 	}
 	//	Return amount of data parsed
-	return lpBuffer - lpBufferBegin;
+	return (DWORD)(lpBuffer - lpBufferBegin);
 }
 
 
@@ -3533,7 +3533,7 @@ BOOL MessageObject_Precompile(LPBUFFER lpOutBuffer, PCHAR pData, DWORD dwData, P
 		{
 			pCurrent		= pParenthesis;
 			pEnd			= &pData[dwData];
-			dwNameLength	= pCurrent - pData;
+			dwNameLength	= (DWORD)(pCurrent - pData);
 
 			do
 			{
@@ -3558,7 +3558,7 @@ BOOL MessageObject_Precompile(LPBUFFER lpOutBuffer, PCHAR pData, DWORD dwData, P
 				if (! lpArgument) break;
 
 				//	Initialize variable
-				lpArgument->dwArgument	= &pParenthesis[1] - pCurrent;
+				lpArgument->dwArgument	= (DWORD)(&pParenthesis[1] - pCurrent);
 				lpArgument->pArgument	= pCurrent;
 				//	Set some variables
 				pCurrent[0]		= C_STRING;

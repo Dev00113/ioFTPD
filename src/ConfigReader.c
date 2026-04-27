@@ -159,7 +159,7 @@ BOOL Config_Load(LPTSTR tszFileName, LPCONFIG_FILE *plpConfigFile)
 
 	if (!lpConfigFile)
 	{
-		dwLen = _tcslen(tszFileName);
+		dwLen = (DWORD)_tcslen(tszFileName);
 		lpConfigFile = (LPCONFIG_FILE) AllocateShared(NULL, _T("CONFIG_FILE"), sizeof(*lpConfigFile)+(dwLen+1)*sizeof(TCHAR));
 		if (!lpConfigFile) return FALSE;
 
@@ -313,7 +313,7 @@ VOID Config_Parse_Sections()
 				lpSectionInfoArray = lpTempSectionArray;
 			}
 
-			dwPath    = _tcslen(tpLineOffset);
+			dwPath    = (DWORD)_tcslen(tpLineOffset);
 			lpSection = lpSectionInfoArray[dwSectionInfoArray++] = Allocate("SectionName", sizeof(*lpSection) + dwPath * sizeof(TCHAR));
 			if (!lpSection)
 			{
@@ -392,7 +392,7 @@ BOOL Config_Read(LPCONFIG_FILE lpConfigFile)
 			//	Default status of line is active
 			Active	= TRUE;
 			//	Calculate line length
-			l_Line	= NewLine - Line;
+			l_Line	= (INT)(NewLine - Line);
 			//	Replace newline character with zero
 			NewLine[0]	= '\0';
 
@@ -403,7 +403,7 @@ BOOL Config_Read(LPCONFIG_FILE lpConfigFile)
 				if ((Seek = (LPSTR)memchr(&Line[1], ']', l_Line - 1)))
 				{
 					//	Calculate length of array name
-					l_Name	= Seek - &Line[1];
+					l_Name	= (INT)(Seek - &Line[1]);
 
 					if (! Line_Array_Start)
 					{
@@ -472,8 +472,8 @@ BOOL Config_Read(LPCONFIG_FILE lpConfigFile)
 					(Seek = (LPSTR)memchr(&CurrentLine->Text[1], '=', l_Line - 1)) &&
 					Seek > CurrentLine->Text &&
 					Seek < &CurrentLine->Text[l_Line - 1] &&
-					FindString(CurrentLine->Text, Seek - CurrentLine->Text, &CurrentLine->Variable, &CurrentLine->Variable_l) &&
-					FindString(&Seek[1], CurrentLine->Text + l_Line - &Seek[1], &CurrentLine->Value, &CurrentLine->Value_l))
+					FindString(CurrentLine->Text, (DWORD)(Seek - CurrentLine->Text), &CurrentLine->Variable, &CurrentLine->Variable_l) &&
+					FindString(&Seek[1], (DWORD)(CurrentLine->Text + l_Line - &Seek[1]), &CurrentLine->Value, &CurrentLine->Value_l))
 				{
 					//	Line is active
 					CurrentLine->Active	= TRUE;
@@ -552,7 +552,7 @@ BOOL Config_Write(LPCONFIG_FILE lpConfigFile)
 		{
 			//	Calculate line length
 			// TODO: use Text_l... but make sure it's always correct first...
-			dwBytesToWrite	= _tcslen(lpLine->Text);
+			dwBytesToWrite	= (DWORD)_tcslen(lpLine->Text);
 			//	Write line to file
 			WriteFile(hConfigFile, lpLine->Text, dwBytesToWrite * sizeof(TCHAR), &dwBytesWritten, NULL);
 			WriteFile(hConfigFile, _TEXT("\r\n"), 2 * sizeof(TCHAR), &dwBytesWritten, NULL);
@@ -604,7 +604,7 @@ LPCONFIG_LINE Config_Get_Primitive(LPCONFIG_FILE lpConfigFile, LPTSTR tszArray, 
 	DWORD				dwVariable, dwArray;
 	INT					iOffset;
 
-	dwArray	= _tcslen(tszArray);
+	dwArray	= (DWORD)_tcslen(tszArray);
 	//	Find the named array
 	for (lpArray = lpConfigFile->lpLineArray;lpArray;lpArray = lpArray->Next)
 	{
@@ -613,7 +613,7 @@ LPCONFIG_LINE Config_Get_Primitive(LPCONFIG_FILE lpConfigFile, LPTSTR tszArray, 
 			! _tcsnicmp(lpArray->Name, tszArray, dwArray))
 		{
 			//	Get variable length
-			dwVariable	= _tcslen(tszVariable);
+			dwVariable	= (DWORD)_tcslen(tszVariable);
 			//	Get offset
 			iOffset	= (lpOffset ? lpOffset[0] : 0);
 
@@ -651,7 +651,7 @@ LPCONFIG_LINE Config_Get_Primitive(LPCONFIG_FILE lpConfigFile, LPTSTR tszArray, 
 				//	Shift result by one
 				lpResultLine++;
 				//	Update our offset
-				if (lpOffset) lpOffset[0]	= (lpResultLine - lpArray->Sorted) + 1;
+				if (lpOffset) lpOffset[0]	= (INT)(lpResultLine - lpArray->Sorted) + 1;
 			}
 			return lpResultLine[0];
 		}
@@ -677,7 +677,7 @@ LPSTR Config_Get_Linear(LPCONFIG_FILE lpConfigFile, LPTSTR tszArray, LPTSTR tszV
 	//	Find beginning of array
 	if (! lpLine)
 	{
-		dwArray	= _tcslen(tszArray);
+		dwArray	= (DWORD)_tcslen(tszArray);
 
 		Config_Lock(lpConfigFile, FALSE);
 		//	Find array
@@ -903,7 +903,7 @@ LPTSTR Config_Get_Path(LPCONFIG_FILE lpConfigFile, LPTSTR tszArray, LPTSTR tszVa
 
 	if (lpLine)
 	{
-		dwSuffix	= _tcslen(tszSuffix) + 1;
+			dwSuffix	= (DWORD)_tcslen(tszSuffix) + 1;
 		dwPath		= lpLine->Value_l;
 
 		if (tszBuffer)
@@ -945,7 +945,7 @@ LPTSTR Config_Get_Path_Shared(LPCONFIG_FILE lpConfigFile, LPTSTR tszArray, LPTST
 
 	if (lpLine)
 	{
-		dwSuffix	= _tcslen(tszSuffix) + 1;
+		dwSuffix	= (DWORD)_tcslen(tszSuffix) + 1;
 		dwPath		= lpLine->Value_l;
 
 		tszBuffer	= (LPSTR)AllocateShared(NULL, "Config:Get:Path", dwPath + dwSuffix + sizeof(TCHAR));
@@ -978,7 +978,7 @@ BOOL Config_Set(LPCONFIG_FILE lpConfigFile, char *array, int line, char *value, 
 	CHAR				*Seek;
 	INT					Line_Len, i;
 
-	i	= strlen(array);
+	i	= (INT)strlen(array);
 
 	Config_Lock(lpConfigFile, TRUE);
 
@@ -1051,7 +1051,7 @@ BOOL Config_Set(LPCONFIG_FILE lpConfigFile, char *array, int line, char *value, 
 		return FALSE;
 	}
 
-	Line_Len	= strlen(value);
+	Line_Len	= (INT)strlen(value);
 
 	New			= (CONFIG_LINE *)Allocate("Config:Line", sizeof(CONFIG_LINE));
 	New->Text	= (CHAR *)Allocate("Config:Line:Data", Line_Len + 1);
@@ -1063,8 +1063,8 @@ BOOL Config_Set(LPCONFIG_FILE lpConfigFile, char *array, int line, char *value, 
 		(Seek = (CHAR *)memchr(New->Text + 1, '=', Line_Len - 1)) != NULL &&
 		Seek > New->Text &&
 		Seek < New->Text + Line_Len - 1 &&
-		FindString(New->Text, Seek - New->Text, &New->Variable, &New->Variable_l) &&
-		FindString(Seek + 1, New->Text + Line_Len - 1 - Seek, &New->Value, &New->Value_l))
+		FindString(New->Text, (DWORD)(Seek - New->Text), &New->Variable, &New->Variable_l) &&
+		FindString(Seek + 1, (DWORD)(New->Text + Line_Len - 1 - Seek), &New->Value, &New->Value_l))
 	{
 		New->Active	= TRUE;
 		Array->SSize++;
@@ -1158,7 +1158,7 @@ VOID Config_Print(LPCONFIG_FILE lpConfigFile, LPBUFFER lpBuffer, LPTSTR tszArray
 	LPCONFIG_LINE		lpLine;
 	DWORD				dwArray;
 
-	dwArray	= (tszArray ? _tcslen(tszArray) + 1 : 0);
+	dwArray	= (tszArray ? (DWORD)_tcslen(tszArray) + 1 : 0);
 
 	Config_Lock(lpConfigFile, FALSE);
 	//	Loop through config
@@ -1277,7 +1277,7 @@ BOOL PathCheck(LPUSERFILE lpUserFile, LPTSTR tszVirtualPath, LPTSTR tszAccessTyp
 		{
 			//	Find second quote
 			tszAccessList	= (LPTSTR)_tmemchr(++tszPath, _TEXT('"'), lpLine->Value_l - 1);
-			dwPath	= &tszAccessList[-1] - tszPath;
+			dwPath	= (DWORD)(&tszAccessList[-1] - tszPath);
 		}
 		else
 		{
@@ -1287,7 +1287,7 @@ BOOL PathCheck(LPUSERFILE lpUserFile, LPTSTR tszVirtualPath, LPTSTR tszAccessTyp
 				//	Find first '\t'
 				tszAccessList	= (LPSTR)_tmemchr(&tszPath[1], _TEXT('\t'), lpLine->Value_l - 1);
 			}
-			dwPath	= tszAccessList - tszPath;
+			dwPath	= (DWORD)(tszAccessList - tszPath);
 		}
 
 		if (tszAccessList++)

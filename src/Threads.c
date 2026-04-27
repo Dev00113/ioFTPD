@@ -296,7 +296,7 @@ VOID Thread_DeInit(VOID)
 	while (n--)
 	{
 		//	Tell io threads to suicide
-		PostQueuedCompletionStatus(hCompletionPort, 0, -6, NULL);
+		PostQueuedCompletionStatus(hCompletionPort, 0, (ULONG_PTR)-6, NULL);
 	}
 
 	// release a few more just in case...
@@ -593,7 +593,11 @@ static UINT WINAPI WorkerThread(LPTHREADDATA lpThreadData)
 	//	Store TLS data
 	TlsSetValue(dwThreadDataTlsIndex, lpThreadData);
 	//	Set random seed
-	srand(GetCurrentThreadId() + GetTickCount() + (DWORD)GetCurrentFiber());
+	{
+		ULONG_PTR uFiber = (ULONG_PTR)GetCurrentFiber();
+		UINT64    uFiber64 = (UINT64)uFiber;
+		srand((unsigned int)(GetCurrentThreadId() + GetTickCount() + uFiber + (uFiber64 >> 32)));
+	}
 	lpJob	= NULL;
 	bCreateThread	= FALSE;
 
@@ -810,7 +814,8 @@ static UINT WINAPI IoThreadEx(LPVOID lpContext)
 {
 	LPFILEOVERLAPPED   lpOverlapped; // it could really be anything, but this uses less casts!
 	LPSOCKETOVERLAPPED lpSockOver;
-	DWORD			   dwBytesTransmitted, dwKey, dwLastError;
+	DWORD			   dwBytesTransmitted, dwLastError;
+	ULONG_PTR		   dwKey;
 	BOOL			   bResult;
 
 	for (;;)
@@ -819,7 +824,7 @@ static UINT WINAPI IoThreadEx(LPVOID lpContext)
 		bResult	= GetQueuedCompletionStatus(hCompletionPort, &dwBytesTransmitted,
 			&dwKey, (LPOVERLAPPED *)&lpOverlapped, INFINITE);
 
-		if (dwKey == (DWORD) -6)
+		if (dwKey == (ULONG_PTR)-6)
 		{
 			//	Make thread exit
 			InterlockedDecrement(&lIoThreadCount);
@@ -835,25 +840,25 @@ static UINT WINAPI IoThreadEx(LPVOID lpContext)
 			case 0:
 				dwLastError = (! bResult ? GetLastError() : NO_ERROR);
 				break;
-			case (DWORD)-1:
+			case (ULONG_PTR)-1:
 				//	File IO, success
 				dwLastError	= (! bResult ? GetLastError() : NO_ERROR);
 				// see if we need to start a queued request because too many were outstanding on device...
 				PopIOQueue(lpOverlapped->hFile);
 				break;
-			case (DWORD)-2:
+			case (ULONG_PTR)-2:
 				//	Pending socket send
 				if (!SendQueuedIO(lpSockOver)) continue;
 				dwLastError	= WSAGetLastError();
 				break;
-			case (DWORD)-3:
+			case (ULONG_PTR)-3:
 				//	Pending socket receive
 				if (!ReceiveQueuedIO(lpSockOver)) continue;
 				dwLastError	= WSAGetLastError();
 				break;
-			case (DWORD)-5:
+			case (ULONG_PTR)-5:
 				//	File io error
-				dwLastError	= lpOverlapped->Internal;
+				dwLastError	= (DWORD)lpOverlapped->Internal;
 				// see if we need to start a queued request because too many were outstanding on device...
 				PopIOQueue(lpOverlapped->hFile);
 				break;

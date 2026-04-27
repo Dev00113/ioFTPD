@@ -1503,7 +1503,7 @@ LPUSERSEARCH FindParse(LPTSTR tszWildCard, LPUSERFILE lpCaller, struct _FTP_USER
 		bLimited = TRUE;
 	}
 
-	dwWildCard  = _tcslen(tszWildCard);
+	dwWildCard  = (DWORD)_tcslen(tszWildCard);
 	//  Remove quotes
 	if (tszWildCard[0] == '"' &&
 		(tpQuote = (PCHAR)_tmemchr(&tszWildCard[1], _TEXT('"'), dwWildCard)))
@@ -1530,7 +1530,7 @@ LPUSERSEARCH FindParse(LPTSTR tszWildCard, LPUSERFILE lpCaller, struct _FTP_USER
 			tpSpace[0]  = '\0';
 		}
 		//  Calculate new length
-		dwWildCard  -= (&tpSpace[1] - tszWildCard);
+		dwWildCard  -= (DWORD)(&tpSpace[1] - tszWildCard);
 
 		//  Exclude term
 		if (tszWildCard[0] == '!')
@@ -1638,7 +1638,7 @@ LPUSERSEARCH FindParse(LPTSTR tszWildCard, LPUSERFILE lpCaller, struct _FTP_USER
 			}
 
 			//  Allocate memory for search item
-			dwName  = tpSpace - tszWildCard;
+			dwName  = (DWORD)(tpSpace - tszWildCard);
 			lpFlag  = (LPUSERSEARCH_FLAG)Allocate("User:Search:Flag", sizeof(USERSEARCH_FLAG) + dwName * sizeof(TCHAR));
 			if (! lpFlag) goto DONE;
 			//  Store flag
@@ -1718,7 +1718,7 @@ LPUSERSEARCH FindParse(LPTSTR tszWildCard, LPUSERFILE lpCaller, struct _FTP_USER
 
 		default:
 			//  User
-			dwName  = tpSpace - tszWildCard;
+			dwName  = (DWORD)(tpSpace - tszWildCard);
 			//  Select type
 			if (_tmemchr(tszWildCard, _TEXT('*'), dwName) || _tmemchr(tszWildCard, _TEXT('?'), dwName) || _tmemchr(tszWildCard, _TEXT('['), dwName))
 			{
@@ -1895,7 +1895,7 @@ PINT32 GetUsers(LPDWORD lpUserIdCount)
 VOID HashString(LPTSTR tszString, PUCHAR pHash)
 {
   //  Hash String
-  sha1(pHash, (const PUCHAR)tszString, _tcslen(tszString));
+  sha1(pHash, (const PUCHAR)tszString, (unsigned long)_tcslen(tszString));
 }
 
 

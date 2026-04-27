@@ -309,8 +309,8 @@ BOOL Dynamic_Add(LPTSTR tszName, LPTSTR tszCommandLine)
 	if (! tszName ||
 		! tszCommandLine) ERROR_RETURN(ERROR_MISSING_ARGUMENT, FALSE);
 
-	dwName        = _tcslen(tszName);
-	dwCommandLine = _tcslen(tszCommandLine);
+	dwName        = (DWORD)_tcslen(tszName);
+	dwCommandLine = (DWORD)_tcslen(tszCommandLine);
 
 	// struct + 2 strings all under 1 allocate so easy to free
 	lpDynamic = (LPDYNAMIC_TASK) Allocate("DynamicTask", sizeof(DYNAMIC_TASK) + (dwName + dwCommandLine + 2)*sizeof(TCHAR));
@@ -482,8 +482,8 @@ BOOL Scheduler_Add(LPTSTR tszName, LPTSTR tszCommandLine)
 		}
 	}
 
-	dwName	= _tcslen(tszName);
-	dwCommandLine	= _tcslen(tszCommandLine);
+	dwName	= (DWORD)_tcslen(tszName);
+	dwCommandLine	= (DWORD)_tcslen(tszCommandLine);
 	//	Allocate continous memory for scheduler item
 	lpTask	= (LPSCHEDULED_TASK)Allocate("Scheduler:Item", sizeof(SCHEDULED_TASK) + (dwName + dwCommandLine + 2) * sizeof(TCHAR));
 	if (! lpTask) return FALSE;

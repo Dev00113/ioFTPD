@@ -1120,11 +1120,11 @@ User_CheckIp(PCONNECTION_INFO pConnection,
 		if (dwStop > dwStart)
 		{
 			dwStop -= dwStart;
-			dwStart = (rand() / (RAND_MAX + 1) * dwRandomLoginDelay);
+			dwStart = (DWORD)(rand() / (RAND_MAX + 1) * dwRandomLoginDelay);
 			if (dwStop < dwStart)
 			{
 				// wakeup if we have an event, else sleep for a bit
-				SleepEx(dwStart - dwStop, TRUE);
+				SleepEx((DWORD)(dwStart - dwStop), TRUE);
 			}
 		}
 	}

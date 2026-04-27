@@ -125,12 +125,12 @@ static BOOL Change_User_Stats(CHANGE_VARIABLES *Vars)
 			if (Shift[0] == offsetof(USERFILE, Credits))
 			{
 				//	Credits are treated in a different manner
-				lpTarget = (PINT64)((DWORD)Vars->lpTarget + Shift[0] + sizeof(INT64) * Shift[2]);
+				lpTarget = (PINT64)((ULONG_PTR)Vars->lpTarget + Shift[0] + sizeof(INT64) * Shift[2]);
 			}
 			else
 			{
 				//	Stats
-				lpTarget = (PINT64)((DWORD)Vars->lpTarget + Shift[0] + sizeof(INT64) * (Shift[1] + Shift[2] * 3));
+				lpTarget = (PINT64)((ULONG_PTR)Vars->lpTarget + Shift[0] + sizeof(INT64) * (Shift[1] + Shift[2] * 3));
 			}
 
 			i64Prev = lpTarget[0];
@@ -831,7 +831,7 @@ static BOOL Change_User_Flags(CHANGE_VARIABLES *Vars)
 	tszNewFlags	= GetStringIndexStatic(Vars->Args, 3);
 	//	Copy flags from user to local string
 	_tcscpy(tszFlags, Vars->lpTarget->Flags);
-	dwFlags	= _tcslen(tszFlags);
+	dwFlags	= (DWORD)_tcslen(tszFlags);
 
 	switch (tszNewFlags[0])
 	{
@@ -1463,7 +1463,7 @@ LPTSTR Admin_Change(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRING Arg
 	//	Check # of arguments
 	if (GetStringItems(Args) < 4) ERROR_RETURN(ERROR_MISSING_ARGUMENT, GetStringIndexStatic(Args, 0));
 
-	dwCommand	= GetStringIndexLength(Args, 2);
+	dwCommand	= (DWORD)GetStringIndexLength(Args, 2);
 	tszTarget	= GetStringIndexStatic(Args, 1);
 	tszCommand	= GetStringIndexStatic(Args, 2);
 	lpBuffer	= (lpUser ? &lpUser->CommandChannel.Out : NULL);

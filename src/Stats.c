@@ -60,7 +60,7 @@ BOOL CompileStats(LPSTATS lpStats, IO_STATS *pIoStatsTotals, BOOL bSkipFirstPref
 	dwOffset2 = dwStatsOffset[n] + (iSection * 3 * sizeof(INT64));
 	if (pIoStatsTotals)
 	{
-		pTotal = (PINT64)((ULONG)pIoStatsTotals->lpUserFile + dwOffset2);
+		pTotal = (PINT64)((ULONG_PTR)pIoStatsTotals->lpUserFile + dwOffset2);
 	}
 	else
 	{
@@ -76,7 +76,7 @@ BOOL CompileStats(LPSTATS lpStats, IO_STATS *pIoStatsTotals, BOOL bSkipFirstPref
 	{
 		if (iSection2 != -1)
 		{
-			pInt64 = (PINT64)((ULONG)lpUserFile + dwOffset2);
+			pInt64 = (PINT64)((ULONG_PTR)lpUserFile + dwOffset2);
 
 			CStat.Stat[0] = pInt64[0];
 			CStat.Stat[1] = pInt64[1];
@@ -88,7 +88,7 @@ BOOL CompileStats(LPSTATS lpStats, IO_STATS *pIoStatsTotals, BOOL bSkipFirstPref
 			// NOTE: iSection 2 == -1 implies section=0 so it's the start of the correct array
 			for (n=0 ; n<MAX_SECTIONS ; n++)
 			{
-				pInt64 = (PINT64)((ULONG)lpUserFile + dwOffset2 + n*3*sizeof(INT64));
+				pInt64 = (PINT64)((ULONG_PTR)lpUserFile + dwOffset2 + n*3*sizeof(INT64));
 
 				CStat.Stat[0] += pInt64[0];
 				CStat.Stat[1] += pInt64[1];
@@ -126,7 +126,7 @@ BOOL CompileStats(LPSTATS lpStats, IO_STATS *pIoStatsTotals, BOOL bSkipFirstPref
 
 				if (lpOffset != &lpCStats[dwGathered])
 				{
-					MoveMemory(&lpOffset[1], lpOffset, (ULONG)&lpCStats[dwGathered] - (ULONG)lpOffset);
+					MoveMemory(&lpOffset[1], lpOffset, (ULONG_PTR)&lpCStats[dwGathered] - (ULONG_PTR)lpOffset);
 				}
 				lpOffset[0].lpUserFile = lpUserFile;
 				lpOffset[0].Stat[0] = CStat.Stat[0];

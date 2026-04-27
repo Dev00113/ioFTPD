@@ -83,7 +83,7 @@ DataRow_ParseBuffer(PCHAR pBuffer,
 			continue;
 		}
 		// it could be a line with just a field name like "admingroups" but no data...
-		dwField  = (pNewline[-1] == '\r' ? &pNewline[-1] : pNewline) - pField;
+		dwField  = (DWORD)((pNewline[-1] == '\r' ? &pNewline[-1] : pNewline) - pField);
 		pField[dwField] = 0;
 
 		for (n = dwDataRowArray;n--;)
@@ -106,9 +106,9 @@ DataRow_ParseBuffer(PCHAR pBuffer,
 		continue;
 	}
     //  Calculate length of name and data
-    dwField  = pSpace - pField;
+    dwField  = (DWORD)(pSpace - pField);
     szData  = &pSpace[1];
-    dwData  = (pNewline[-1] == '\r' ? &pNewline[-1] : pNewline) - szData;
+    dwData  = (DWORD)((pNewline[-1] == '\r' ? &pNewline[-1] : pNewline) - szData);
     //  Skip zero length
     if (dwData <= 0 ||
       dwField <= 0)
@@ -169,7 +169,7 @@ DataRow_ParseBuffer(PCHAR pBuffer,
           pCheck  = &szData[dwData];
         }
         //  Determinate length for item
-        if ((dwItem = pCheck - szData) > lpDataRow->dwMaxLength) dwItem  = lpDataRow->dwMaxLength;
+        if ((dwItem = (DWORD)(pCheck - szData)) > lpDataRow->dwMaxLength) dwItem  = lpDataRow->dwMaxLength;
         //  Copy string
         CopyMemory(lpBuffer, szData, dwItem);
         ((LPSTR)lpBuffer)[dwItem]  = '\0';
@@ -178,7 +178,7 @@ DataRow_ParseBuffer(PCHAR pBuffer,
         //  Move buffer to next entry
         lpBuffer  = (LPVOID)((ULONG_PTR)lpBuffer + lpDataRow->dwMaxLength + 1);
         //  Reduce length of available data
-        dwData  -= &pCheck[1] - szData;
+        dwData  -= (DWORD)(&pCheck[1] - szData);
         szData  = &pCheck[1];
       }
       break;
