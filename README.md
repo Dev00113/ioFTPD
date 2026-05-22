@@ -235,11 +235,12 @@ Key structural types:
 
 | Configuration | Output | Notes |
 |---------------|--------|-------|
-| Release\|Win32 | `system\ioFTPD.exe` | Optimized, links `libssl.lib` + `libcrypto.lib`, `tcl90.lib` |
+| Release\|x64 | `system\x64\ioFTPD.exe` | **Primary release build.** Optimized x64, links x64 `libssl.lib` + `libcrypto.lib`, `tcl90.lib` |
+| Release\|Win32 | `system\ioFTPD.exe` | Win32 maintenance build; companion tools (`ioFTPD-Watch`, `ServiceInstaller`) build Win32 only |
 | Debug\|Win32 | `system\ioFTPD-debug.exe` | No optimization, `tcl90.lib`, OpenSSL |
 | Purify\|Win32 | `system\ioFTPD.exe` | Debug + `EnableFastChecks`, `tcl90.lib`, `libssl.lib`/`libcrypto.lib`, memory analysis |
 
-All configurations link against `tcl90.lib` and OpenSSL 3.x (`libssl.lib` / `libcrypto.lib`). Library paths are under `C:\Dev\Libs\VS2022\x86\`.
+All configurations link against `tcl90.lib` and OpenSSL 3.x (`libssl.lib` / `libcrypto.lib`). x64 library paths are under `C:\Dev\Libs\VS2022\x64\`; Win32 paths are under `C:\Dev\Libs\VS2022\x86\`.
 
 ### Build Steps
 
@@ -264,12 +265,23 @@ The build number (e.g. `72`) is the monotonically increasing `git rev-list --cou
 > powershell -NoProfile -ExecutionPolicy Bypass -File scripts\generate_version.ps1
 > ```
 
+### Runtime Prerequisites (deployment)
+
+ioFTPD v8.0.0 requires two Visual C++ Redistributable packages on the target machine:
+
+| Package | Required by | Download |
+|---------|-------------|----------|
+| Visual C++ 2015-2022 x64 | `ioFTPD.exe`, `tcl90.dll`, OpenSSL DLLs | https://aka.ms/vs/17/release/vc_redist.x64.exe |
+| Visual C++ 2015-2022 x86 | `ioFTPD-Watch.exe` (32-bit watchdog) | https://aka.ms/vs/17/release/vc_redist.x86.exe |
+
+Both packages are included in the `PREREQUISITES\` folder of the release archive.
+
 ### Required Libraries in `system\`
 
 At runtime, `system\` must contain:
 - `ioFTPD.exe` (or the appropriate build variant)
-- OpenSSL DLLs
-- Tcl DLL
+- OpenSSL DLLs (`libssl-3-x64.dll`, `libcrypto-3-x64.dll`)
+- Tcl DLL (`tcl90.dll`)
 - `ioFTPD.ini` (configuration file)
 - VFS mount-point files
 
@@ -405,7 +417,7 @@ The following changes are recommended in rough priority order:
 
 ### High Priority (Stability / Safety)
 
-6. ~~**Port to 64-bit**~~ **Done in v8.0.0** – Native AMD64 build ships. All pointer-truncation issues identified in the audit have been resolved. `DC_MESSAGE_WIRE` / `ONLINEDATA_WIRE` provide a cross-architecture IPC wire format. External tools (ioNiNJA, sitewho, etc.) must be rebuilt against the v8.0 headers.
+6. ~~**Port to 64-bit**~~ **Done in v8.0.0** – Native AMD64 build ships. All pointer-truncation issues identified in the audit have been resolved. `DC_MESSAGE_WIRE` / `ONLINEDATA_WIRE` provide a cross-architecture IPC wire format. External IPC clients must be rebuilt against the v8.0 headers.
 7. **Enable Buffer Security Check (`/GS`)** – Currently disabled in Debug config; enable across all configurations.
 8. **Replace spin-lock busy-waits** – Replace `while (InterlockedExchange(&lock, TRUE)) SwitchToThread()` with proper `CRITICAL_SECTION` or `SRWLock` usage.
 9. **Fix `DummyEncode` unsigned underflow** – Guard the loop with an early-out if `dwIn < 4`.

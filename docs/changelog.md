@@ -10,6 +10,144 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [8.0.0] — 2026-05-22
+
+> **Breaking change** — the DataCopy shared-memory IPC wire format has changed.
+> External IPC clients that communicate with ioFTPD via
+> `WM_DATACOPY_FILEMAP` must be rebuilt against the v8.0 headers.
+> v8.0.0 is the sole active release line and ships both a Win32 (32-bit)
+> and x64 (64-bit) build. 32-bit IPC clients are compatible with the Win32
+> build only — the x64 build rejects 32-bit senders.
+
+### Added
+
+- **Native 64-bit (AMD64) build** — ioFTPD now compiles and runs as a 64-bit
+  process.  No virtual-address ceiling; no `/LARGEADDRESSAWARE` workaround.
+  ASLR (`/DYNAMICBASE`), DEP (`/NXCOMPAT`), and high-entropy ASLR
+  (`/HIGHENTROPYVA`) are enabled for the x64 build.
+  Win32 Release continues to ship alongside x64.
+  Verified on x64 with OpenSSL 3.6.1: TLS 1.3 connections, upload, download,
+  rename, and `SITE WHO` all confirmed working.
+
+- **`DC_MESSAGE_WIRE`** — new fixed-width IPC message header for shared-memory
+  DataCopy requests.  Replaces `DC_MESSAGE` (which had `HANDLE`/`LPVOID`
+  pointer-sized fields that differed between 32/64-bit processes).
+  `DC_MESSAGE_WIRE` uses only `UINT32`/`UINT64` fields; layout is identical
+  regardless of sender/receiver architecture (24 bytes on both).
+
+- **`ONLINEDATA_WIRE`** — new cross-process wire format for online data.
+  The two `LPTSTR` pointer fields (`tszRealPath`, `tszRealDataPath`) are
+  replaced by `UINT32 dwRealPathLen`/`UINT32 dwRealDataPathLen`; string data
+  follows immediately after `DC_ONLINEDATA` in shared memory.
+  `dwBytesTransfered` widened to `UINT64 qwBytesTransfered` (removes the 4 GB
+  per-session transfer cap).
+
+- **`USERFILE_WIRE_SIZE` / `GROUPFILE_WIRE_SIZE`** macros — byte count safe
+  to copy across a process boundary (excludes the process-local `lpInternal`
+  and `lpParent` pointer tail fields).
+
+### Fixed
+
+- **IOCP completion keys** (`Threads.c`, `File.c`, `Socket.c`) — all negative
+  sentinel values normalised to `(ULONG_PTR)-N`.  On x64, `(DWORD)-N` does not
+  equal `(ULONG_PTR)-N` in a pointer-width comparison.
+- **`GetQueuedCompletionStatus` key type** (`Threads.c`) — completion-key
+  parameter changed from `DWORD*` to `ULONG_PTR*`; was truncating 64-bit keys.
+- **`InterlockedExchange` on `SOCKET`** (`Services.c`, `Identify.c`) — replaced
+  with `IoAtomicExchangeSocket`; `SOCKET` is `UINT_PTR` (8 bytes on x64).
+- **Stack-walker register selection** (`IoDebug.c`) — `#ifdef _M_X64` selects
+  `Rip`/`Rbp`/`Rsp` and `IMAGE_FILE_MACHINE_AMD64` on x64 builds.
+- **Tcl 9.0 `Tcl_Size` API** (`Tcl.c`) — `Tcl_GetStringFromObj` length
+  parameter changed from `int` to `Tcl_Size` (`ptrdiff_t`, 64-bit on x64).
+- **`DC_VFS.pBuffer`** — corrected from `PBYTE[1]` (array of pointers, wrong
+  stride on x64) to `BYTE[1]` (flexible byte array).
+- **Memory.c debug allocator** — header arithmetic replaced with explicit
+  `MEM_DEBUG_HEADER` struct so canary placement is correct on both 32/64-bit.
+- Five isolated pointer-truncation fixes: `IoDebug.c` `SIZE_T` subtraction,
+  `Tcl.c` fiber handle `%p` format, `Threads.c` `srand` seed fold,
+  `Memory.c` `%IX` format string, `Memory.c` debug header layout.
+- **`Tcl_WaitObject` pointer-truncation — "create new" path missed by initial fix**
+  (`Tcl.c`) — The initial `waitobject` fix changed the "find existing object" path
+  (line 525) but missed a second identical `lResult = (LONG)(ULONG_PTR)lpWaitObject`
+  assignment in the "create new object" path (same text, different leading whitespace,
+  so the `replace_all` silently skipped it). A 64-bit `LPTCL_WAITOBJECT*` returned
+  by `waitobject open` on this path was still truncated to 32 bits. Any subsequent
+  `waitobject wait`, `set`, `reset`, or `close` call zero-extended the saved 32-bit
+  value to address `0x00000000XXXXXXXX` — confirmed as the root cause of a live
+  crash (access violation reading `0xC7DEB6E4`, RIP `ioFTPD.exe+0x794B3`
+  = `Tcl_WaitObject+0xC93`). Fixed by changing the second assignment to
+  `(Tcl_WideInt)(ULONG_PTR)lpWaitObject`.
+- **`io var get` / `io var unset` crash on x64** (`Tcl.c`) — `Tcl_Variable` builds
+  a synthetic `LPTCL_VARIABLE` search key by subtracting `offsetof(TCL_VARIABLE, szName)`
+  from the incoming Tcl string pointer (`szArgument`). An intermediate `(LONG)` cast
+  truncated the 64-bit pointer to 32 bits before the subtraction, producing a
+  completely wrong key address. `bsearch` then received and dereferenced the garbage
+  pointer. Fixed by removing the `(LONG)` cast; arithmetic now runs at `ULONG_PTR`
+  width: `(ULONG_PTR)szArgument - offsetof(TCL_VARIABLE, szName)`.
+- **`InterlockedExchange((LPLONG)&lpData, ...)` on `LPVOID` field — spinlock UB**
+  (`Tcl.c`) — `TCL_WAITOBJECT.lpData` is `LPVOID volatile` (8 bytes on x64). The
+  spinlock `wait`, `set`, and `reset` handlers passed `(LPLONG)&lpData` to
+  `InterlockedExchange`, which expects a `LONG*` (4-byte operand). On x64 this
+  aliases an 8-byte field through a 4-byte pointer, which is undefined behaviour and
+  may interact poorly with compiler aliasing optimisations. Replaced all three sites
+  with `InterlockedExchangePointer(&lpData, (LPVOID)TRUE/FALSE)`, which operates on
+  the full pointer-width `LPVOID volatile` field.
+- **Pointer-difference cast cleanup** (`DirectoryCache.c`, `IdDatabase.c`) — four
+  `(ULONG)` casts on pointer-difference expressions changed to `(DWORD)` with a
+  comment noting the value is bounded by a 4 KB stack buffer or a small ID-array
+  count. The `SetFilePointer` offset cast clarified as `(LONG)(DWORD)` to make the
+  intentional narrowing explicit. No runtime effect; fixes latent warnings.
+- **`IoAtomicExchangeSocket` macro** (`Services.c`, `Identify.c`) — replaces
+  `SOCKET`-typed `InterlockedExchangePointer` calls.  The `PVOID*` cast was
+  strict-aliasing UB; the new macro uses `_InterlockedExchange64` on x64 and
+  `InterlockedExchange` on x86.
+- **`UserFile_New2Old` field copy** — `sizeof(lpOld->AdminGroups)` corrected to
+  `sizeof(lpOld->Groups)` for the Groups array (symmetric fix to New2Old).
+- **Stack buffer overflow in `io link` VFS command** (`Tcl.c`) — `temp3[_MAX_PWD+1]`
+  is filled by walking mount-point parent directories backwards. On servers with many
+  VFS entries `dwPathLen` can exceed the array size, placing the initial write past the
+  end of `temp3`. Adjacent stack variables are overwritten; the `/GS` stack-cookie check
+  fires on return and calls `TerminateProcess` directly — no dump, no log entry. Fix:
+  guard the backwards walk; log and skip if `dwPathLen >= sizeof(temp3)`.
+- **`Tcl_Init` failure in worker interpreter silently ignored** (`Tcl.c`) — the return
+  value of `Tcl_Init` in `Tcl_GetInterpreter` was discarded; a failure left the
+  interpreter in an inconsistent state with no log entry. Now logs a `LOG_ERROR`
+  including the Tcl error string.
+
+### Security
+
+- **DataCopy per-command size validation** (`DataCopy.c`) — every `DC_*` case
+  arm validates `dwContextAvailable >= sizeof(expected_struct)` before reading
+  any fields.  Prevents out-of-bounds reads when `qwContextOffset` is near the
+  end of the mapped region.
+- **`SafeStringInRegion()` null-terminator check** (`DataCopy.c`) — all string
+  command arms scan for a null terminator within bounds before passing to any
+  string function.
+- **`DC_FILEINFO_READ` condition corrected** — was copying into an
+  undersized buffer (inverted `<`/`>=` test); now returns required size when
+  buffer too small, copies only when large enough.
+- **`DC_FILEINFO_WRITE` underflow guard** — rejects when `dwBuffer <
+  dwFileNameBytes` before the subtraction, preventing unsigned wrap-around.
+- **Least-privilege `OpenProcess`** — `PROCESS_ALL_ACCESS` replaced with
+  `PROCESS_DUP_HANDLE | PROCESS_QUERY_LIMITED_INFORMATION`; only those rights
+  are needed for `DuplicateHandle` and `IsWow64Process`.
+- **32-bit sender rejection on x64** (`DataCopy_Allocate`) — `IsWow64Process`
+  detects WoW64 callers and rejects them with a log entry.  A 32-bit sender
+  cannot receive the `LRESULT` pointer returned by `SendMessage` because WoW64
+  truncates it to 32 bits, causing a silent hang and handle leak.
+- **`SafeGetTickCount64()` consistency** (`WindowMessage_DataExchange`) —
+  `GetTickCount()` (32-bit, wraps at 49 days) replaced with `SafeGetTickCount64()`
+  to avoid wrap-around against a `ULONGLONG` counter.
+- **`USERFILE_Zero_Internal` / `GROUPFILE_Zero_Internal`** wired in — macros
+  were defined but never called; process-local `lpInternal`/`lpParent` pointer
+  values are now explicitly zeroed before every IPC write-back.
+- **`static_assert(sizeof(ONLINEDATA_WIRE) == 1384)`** in `WinMessages.h` —
+  compile-time pin; any accidental layout change breaks the build immediately.
+- **`VirtualQuery` truncation documented** — `SIZE_T → DWORD` narrowing uses
+  `min(mbi.RegionSize, MAXDWORD)` to make the intentional narrowing explicit.
+
+---
+
 ## [7.10.1] — 2026-04-20
 
 ### Added

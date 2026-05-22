@@ -39,9 +39,13 @@ C:\Dev\
     tcltls-trunk\      — TclTLS (Fossil checkout; created during setup)
     ioFTPD\            — ioFTPD source (git clone)
   Libs\
-    VS2022\x86\
-      OpenSSL\Shared\Release\   — OpenSSL headers + libs (populated by nmake install)
-      TCL\Shared\Release\       — Tcl headers + libs (populated by nmake install)
+    VS2022\
+      x86\
+        OpenSSL\Shared\Release\   — OpenSSL 32-bit headers + libs
+        TCL\Shared\Release\       — Tcl 32-bit headers + libs
+      x64\
+        OpenSSL\Shared\Release\   — OpenSSL 64-bit headers + libs (x64 build only)
+        TCL\Shared\Release\       — Tcl 64-bit headers + libs (x64 build only)
 ```
 
 ---
@@ -63,8 +67,9 @@ During installation, select:
 - **C++ MFC for latest v143 build tools (x86 & x64)** — required for the
   IoKnock project; found under Individual Components
 
-> All ioFTPD builds are **Win32 (x86)** only. The x64 toolset is not required
-> but does not cause harm if installed.
+> ioFTPD ships both **Win32 (x86)** and **x64 (AMD64)** binaries from v8.0.
+> The x64 Native Tools are required if you intend to build the x64 configuration.
+> For Win32-only builds the x64 toolset is not required but does not cause harm.
 
 > The project files pin `<VCToolsVersion>14.44.35207</VCToolsVersion>` (the
 > toolset version that includes MFC) to prevent MSBuild from selecting an older
@@ -306,6 +311,83 @@ nmake -f makefile.vc install ^
 
 ---
 
+## Build OpenSSL 3.6.1 (x64) — required for x64 ioFTPD
+
+This step is only required if you intend to build the x64 configuration.
+The x64 OpenSSL libraries are installed to a separate prefix so they coexist
+with the x86 libraries built above.
+
+### x64-a. Open x64 Native Tools Command Prompt
+
+From the Start menu, open **VS 2022 x64 Native Tools Command Prompt** (not
+the x86 prompt — using the wrong prompt will silently produce a 32-bit build).
+
+### x64-b. Configure and build
+
+```bat
+cd C:\Dev\Sources\openssl-3.6.1
+
+REM Clean any x86 artifacts first
+nmake clean
+
+perl Configure VC-WIN64A shared ^
+    --prefix=C:\Dev\Libs\VS2022\x64\OpenSSL\Shared\Release
+nmake
+nmake install
+```
+
+### x64-c. Resulting layout
+
+```
+C:\Dev\Libs\VS2022\x64\OpenSSL\Shared\Release\
+  bin\
+    libssl-3.dll       (AMD64)
+    libcrypto-3.dll    (AMD64)
+  include\openssl\     (same headers as x86 — no separate copy needed)
+  lib\
+    libssl.lib
+    libcrypto.lib
+    ossl-modules\
+      legacy.dll       (AMD64)
+```
+
+---
+
+## Build Tcl 9.0.2 (x64) — required for x64 ioFTPD
+
+This step is only required for the x64 configuration.
+
+### x64-d. Build in x64 Native Tools Command Prompt
+
+```bat
+cd C:\Dev\Sources\tcl9.0.2\win
+
+nmake -f makefile.vc MACHINE=AMD64 OPTS=threads ^
+    INSTALLDIR=C:\Dev\Libs\VS2022\x64\TCL\Shared\Release release
+
+nmake -f makefile.vc MACHINE=AMD64 OPTS=threads ^
+    INSTALLDIR=C:\Dev\Libs\VS2022\x64\TCL\Shared\Release install
+```
+
+### x64-e. Resulting layout
+
+```
+C:\Dev\Libs\VS2022\x64\TCL\Shared\Release\
+  bin\
+    tcl90.dll          (AMD64)
+    tclsh90.exe        (AMD64)
+  include\             (headers — same as x86, already installed)
+  lib\
+    tcl90.lib
+    tcl9.0\
+```
+
+> TclTLS x64: follow the same steps as the x86 TclTLS build but use the
+> **x64 Native Tools** prompt and point `TCLDIR` / `SSL_INSTALL_FOLDER`
+> at the x64 library directories above.
+
+---
+
 ## Build ioFTPD
 
 ### 6a. Clone the repository
@@ -333,16 +415,24 @@ If your paths differ, update `AdditionalIncludeDirectories` and
 
 | Configuration | Output binary | Notes |
 |---|---|---|
-| `Release\|Win32` | `system\ioFTPD.exe` | Optimised production build |
-| `Debug\|Win32` | `system\ioFTPD-debug.exe` | No optimisation, debug CRT |
-| `Purify\|Win32` | `system\ioFTPD.exe` | Debug + `/RTC1` for runtime checks |
+| `Release\|Win32` | `system\ioFTPD.exe` | Optimised 32-bit production build |
+| `Release\|x64` | `system\x64\ioFTPD.exe` | Optimised 64-bit production build |
+| `Debug\|Win32` | `system\ioFTPD-debug.exe` | No optimisation, debug CRT (32-bit) |
+| `Purify\|Win32` | `system\ioFTPD.exe` | Debug + `/RTC1` runtime checks (32-bit) |
 
 **From the command line (recommended for CI):**
 
 ```bat
+REM Win32 build
 "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" ^
     "C:\Dev\Sources\ioFTPD\ioFTPD-v7.sln" ^
     /p:Configuration=Release /p:Platform=Win32 ^
+    /t:Build /m /nologo
+
+REM x64 build (requires x64 libraries to be built first — see above)
+"C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" ^
+    "C:\Dev\Sources\ioFTPD\ioFTPD-v7.sln" ^
+    /p:Configuration=Release /p:Platform=x64 ^
     /t:Build /m /nologo
 ```
 
@@ -430,19 +520,28 @@ used by `IoDebug.c` for symbol resolution).
 ## Quick-Reference Build Order
 
 ```
-1. Install VS 2022 Community (Desktop C++ workload)
-2. Install Strawberry Perl          → verify: perl --version
-3. Install NASM 2.15.05 to C:\Dev\Tools\nasm-2.15.05\
-4. Install Fossil to C:\Dev\Tools\fossil\fossil.exe
-5. Install Git
-6. Download & extract OpenSSL 3.6.1 → C:\Dev\Sources\openssl-3.6.1\
-7. Download & extract Tcl 9.0.2     → C:\Dev\Sources\tcl9.0.2\
-8. Run: "Build OpenSSL 3.6.1.bat"
-9. Run (VS x86 prompt): nmake for Tcl 9.0.2  (release + install)
+Win32 build (same as before):
+1.  Install VS 2022 Community (Desktop C++ workload, including x64 tools)
+2.  Install Strawberry Perl          → verify: perl --version
+3.  Install NASM 2.15.05 to C:\Dev\Tools\nasm-2.15.05\
+4.  Install Fossil to C:\Dev\Tools\fossil\fossil.exe
+5.  Install Git
+6.  Download & extract OpenSSL 3.6.1 → C:\Dev\Sources\openssl-3.6.1\
+7.  Download & extract Tcl 9.0.2     → C:\Dev\Sources\tcl9.0.2\
+8.  Run (x86 prompt): "Build OpenSSL 3.6.1.bat"
+9.  Run (VS x86 prompt): nmake for Tcl 9.0.2  (release + install)
 10. Fossil clone TclTLS trunk        → C:\Dev\Sources\tcltls-trunk\
 11. Edit tcltls-trunk\win\makefile.vc (fix TCLSH path)
 12. Run: "Build TclTLS.bat"
 13. git clone ioFTPD
 14. MSBuild ioFTPD-v7.sln /p:Configuration=Release /p:Platform=Win32
-15. Copy DLLs and Tcl lib tree to system\
+15. Copy Win32 DLLs and Tcl lib tree to system\
+
+Additional steps for x64 build:
+16. Run (VS x64 prompt): perl Configure VC-WIN64A ... && nmake && nmake install
+    (OpenSSL x64 → C:\Dev\Libs\VS2022\x64\OpenSSL\Shared\Release)
+17. Run (VS x64 prompt): nmake MACHINE=AMD64 for Tcl 9.0.2 (release + install)
+    (Tcl x64 → C:\Dev\Libs\VS2022\x64\TCL\Shared\Release)
+18. MSBuild ioFTPD-v7.sln /p:Configuration=Release /p:Platform=x64
+19. Copy x64 DLLs and Tcl lib tree to system\x64\
 ```

@@ -633,9 +633,13 @@ DoSetup()
 	tszExeName++;
 
 	GetFileVersion(tszExePath, &dwIoVersion[0], &dwIoVersion[1], &dwIoVersion[2], NULL);
-	sprintf_s(tszIoVersionFull, sizeof(tszIoVersionFull), "%u.%u.%u.%d%s",
-	    dwIoVersion[0], dwIoVersion[1], dwIoVersion[2],
-	    IOFTPD_GIT_COMMIT_COUNT, IOFTPD_GIT_SUFFIX);
+#ifdef RELEASE_BUILD
+	sprintf_s(tszIoVersionFull, sizeof(tszIoVersionFull), "%u.%u.%u",
+	    dwIoVersion[0], dwIoVersion[1], dwIoVersion[2]);
+#else
+	sprintf_s(tszIoVersionFull, sizeof(tszIoVersionFull), "%u.%u.%u%s",
+	    dwIoVersion[0], dwIoVersion[1], dwIoVersion[2], IOFTPD_GIT_SUFFIX);
+#endif
 
 	tszExePath[stLen] = 0;
 

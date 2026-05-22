@@ -17,11 +17,20 @@
     STRINGIFY(IOFTPD_VERSION_PATCH) "." \
     STRINGIFY(IOFTPD_VERSION_BUILD)
 
-// Full version string with git build number and commit hash suffix,
-// e.g. "7.10.1.66-b2c9759" or "7.10.1.66-b2c9759-dirty"
+// Release builds: clean "Major.Minor.Patch" — no hash, no build count.
+// Debug/Purify builds: "Major.Minor.Patch-hash" — hash for crash diagnosis,
+//                      no build count (we never need it).
+#ifdef RELEASE_BUILD
 #define IOFTPD_VERSION_FULL \
     STRINGIFY(IOFTPD_VERSION_MAJOR) "." \
     STRINGIFY(IOFTPD_VERSION_MINOR) "." \
-    STRINGIFY(IOFTPD_VERSION_PATCH) "." \
-    STRINGIFY(IOFTPD_VERSION_BUILD) \
+    STRINGIFY(IOFTPD_VERSION_PATCH)
+#else
+#define IOFTPD_VERSION_FULL \
+    STRINGIFY(IOFTPD_VERSION_MAJOR) "." \
+    STRINGIFY(IOFTPD_VERSION_MINOR) "." \
+    STRINGIFY(IOFTPD_VERSION_PATCH) \
     IOFTPD_GIT_SUFFIX
+#endif
+// FILEVERSION quad 4th component: always 0 — build count is not used.
+#define IOFTPD_VERSION_BUILD_RC 0

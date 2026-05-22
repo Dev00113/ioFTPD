@@ -4924,8 +4924,11 @@ static void IoFTPD_TclPanicProc(const char *format, ...)
 {
 	va_list  args;
 	char     buf[2048];
+	char     frame[32];
 	HANDLE   hFile;
 	DWORD    dwWritten, dwLen;
+	PVOID    stack[32];
+	USHORT   frames, i;
 
 	va_start(args, format);
 	_vsnprintf_s(buf, sizeof(buf), _TRUNCATE, format, args);
@@ -4935,6 +4938,9 @@ static void IoFTPD_TclPanicProc(const char *format, ...)
 	OutputDebugStringA("ioFTPD Tcl panic: ");
 	OutputDebugStringA(buf);
 	OutputDebugStringA("\r\n");
+
+	/* Capture return addresses — no heap allocation, safe with corrupt heap. */
+	frames = RtlCaptureStackBackTrace(1, 32, stack, NULL);
 
 	/* Append to a sidecar log in the process working directory so the
 	 * message survives after the process exits.  All Win32 kernel calls —
@@ -4950,6 +4956,12 @@ static void IoFTPD_TclPanicProc(const char *format, ...)
 		WriteFile(hFile, "Tcl panic: ", 11, &dwWritten, NULL);
 		WriteFile(hFile, buf,           dwLen, &dwWritten, NULL);
 		WriteFile(hFile, "\r\n",        2,     &dwWritten, NULL);
+		WriteFile(hFile, "Stack:\r\n",  8,     &dwWritten, NULL);
+		for (i = 0; i < frames; i++)
+		{
+			dwLen = (DWORD)wsprintfA(frame, "  %p\r\n", stack[i]);
+			WriteFile(hFile, frame, dwLen, &dwWritten, NULL);
+		}
 		CloseHandle(hFile);
 	}
 

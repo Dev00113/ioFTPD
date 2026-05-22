@@ -56,13 +56,20 @@ MA 02110-1301, USA.
    interface.  You can also start ioFTPD\system\ioFTPD.exe manually without
    a GUI.
 
-7) IMPORTANT: If you get the following popup error dialog:  "This application
-   has failed to start because the application configuration is incorrect.
-   Reinstalling the application may fix this problem."  Then you need to
-   install the Visual C++ 2015-2022 Redistributable (x86) from Microsoft:
-     https://aka.ms/vc14/vc_redist.x86.exe
-   The file is called vc_redist.x86.exe.  Run it and then run Windows Update
-   to make sure you have the latest patches.
+7) IMPORTANT: ioFTPD v8.0.0 64 requires up to two Microsoft Visual C++ 
+   Redistributable packages to be installed:
+   64bt: requires both packages
+   Win32: requires only the 32bit package.
+
+   Visual C++ 2015-2022 Redistributable (x64) — required by ioFTPD.exe:
+     https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+   Visual C++ 2015-2022 Redistributable (x86) — required by ioFTPD-Watch.exe:
+     https://aka.ms/vs/17/release/vc_redist.x86.exe
+
+   If you see a popup saying "This application has failed to start because the
+   application configuration is incorrect", install both packages above and
+   then run Windows Update to make sure you have the latest patches.
 
    NOTE: v7.9.0 introduced new DLL names.  libssl.dll and libcrypto.dll
    replace the old libeay32.dll and ssleay32.dll (OpenSSL 3.6.1), and
