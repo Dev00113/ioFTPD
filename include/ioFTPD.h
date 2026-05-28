@@ -25,6 +25,7 @@
 
 #include <Tchar.h>
 #include <Winsock2.h>
+#include <ws2tcpip.h>
 #include <MsWsock.h>
 #include <Windows.h>
 #include <errno.h>

@@ -1145,11 +1145,11 @@ VOID ioAddressListFree(LPIOADDRESSLIST lpAddressList)
 
 BOOL ioAddressFind(LPIOADDRESSLIST lpAddressList, struct in_addr Addr)
 {
-    LPSTR       szHost;
+    char        szHost[INET_ADDRSTRLEN];
     LPIOADDRESS lpAddress;
     DWORD       n;
 
-    szHost = inet_ntoa(Addr);
+    InetNtopA(AF_INET, &Addr, szHost, sizeof(szHost));
 
     for (n = 0; n < lpAddressList->dwAddressArray; n++)
     {
@@ -1160,7 +1160,7 @@ BOOL ioAddressFind(LPIOADDRESSLIST lpAddressList, struct in_addr Addr)
                 return TRUE;
             continue;
         }
-        if (!lpAddress->tszString || !szHost) continue;
+        if (!lpAddress->tszString) continue;
         if (!iCompare(lpAddress->tszString, szHost))
             return TRUE;
     }
@@ -1388,7 +1388,7 @@ BOOL Service_Start(LPTSTR tszServiceName)
 
                 tszTemp = tszField;
                 while (*tszTemp && *tszTemp != _T('*') && *tszTemp != _T('?') && *tszTemp != _T('[') && *tszTemp != _T(']')) tszTemp++;
-                if (!*tszTemp && IsNumericIP(tszField) && ((lpNewAddr->Addr.s_addr = inet_addr(tszField)) != INADDR_NONE))
+                if (!*tszTemp && IsNumericIP(tszField) && (InetPtonA(AF_INET, tszField, &lpNewAddr->Addr) == 1))
                 {
                     lpNewAddr->tszString = NULL;
                     Free(tszField);
@@ -2068,6 +2068,7 @@ BOOL Services_Test(PINT lpiNumServices, PINT lpiActiveServices, PINT lpiOnlineSe
     struct sockaddr_in boundAddr;
     int                iAddrLen, iNum, iActive, iOnline, iFailed;
     DWORD              dwError;
+    char               _sipbuf[INET_ADDRSTRLEN];
 
     if (!bServicesInitialized) return TRUE;
 
@@ -2132,8 +2133,9 @@ BOOL Services_Test(PINT lpiNumServices, PINT lpiActiveServices, PINT lpiOnlineSe
         if (bind(Socket, (struct sockaddr*)&lpService->addrLocal, sizeof(lpService->addrLocal)))
         {
             dwError = WSAGetLastError();
+            { struct in_addr _a = lpService->addrLocal.sin_addr; InetNtopA(AF_INET, &_a, _sipbuf, sizeof(_sipbuf)); }
             Putlog(LOG_DEBUG, _T("Services_Test: Bind failed for service '%s' IP=%s: %d.\r\n"),
-                lpService->tszName, inet_ntoa(lpService->addrLocal.sin_addr), dwError);
+                lpService->tszName, _sipbuf, dwError);
             goto failure;
         }
 
@@ -2147,8 +2149,9 @@ BOOL Services_Test(PINT lpiNumServices, PINT lpiActiveServices, PINT lpiOnlineSe
         if (WSAConnect(Socket, (struct sockaddr*)&lpService->addrService, sizeof(lpService->addrService), NULL, NULL, NULL, NULL))
         {
             dwError = WSAGetLastError();
+            { struct in_addr _a = lpService->addrLocal.sin_addr; InetNtopA(AF_INET, &_a, _sipbuf, sizeof(_sipbuf)); }
             Putlog(LOG_DEBUG, _T("Services_Test: Connect failed for service '%s' IP=%s: %d.\r\n"),
-                lpService->tszName, inet_ntoa(lpService->addrLocal.sin_addr), dwError);
+                lpService->tszName, _sipbuf, dwError);
             goto failure;
         }
 
@@ -2173,11 +2176,14 @@ BOOL Services_Test(PINT lpiNumServices, PINT lpiActiveServices, PINT lpiOnlineSe
             iFailed++;
             if (lpService->dwTestCounter == 3)
             {
+                struct in_addr _a = lpService->addrLocal.sin_addr;
+                InetNtopA(AF_INET, &_a, _sipbuf, sizeof(_sipbuf));
                 Putlog(LOG_ERROR, _T("Services_Test: Failed to connect to service '%s' (IP=%s) %d times in a row!\r\n"),
-                    lpService->tszName, inet_ntoa(lpService->addrLocal.sin_addr), lpService->dwTestCounter);
+                    lpService->tszName, _sipbuf, lpService->dwTestCounter);
             }
+            { struct in_addr _a = lpService->addrLocal.sin_addr; InetNtopA(AF_INET, &_a, _sipbuf, sizeof(_sipbuf)); }
             Putlog(LOG_DEBUG, _T("Services_Test: Failed to connect to service '%s' (IP=%s) %d times in a row!\r\n"),
-                lpService->tszName, inet_ntoa(lpService->addrLocal.sin_addr), lpService->dwTestCounter);
+                lpService->tszName, _sipbuf, lpService->dwTestCounter);
         }
 
     next:

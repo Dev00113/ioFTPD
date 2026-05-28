@@ -645,6 +645,7 @@ BOOL MessageObject_Who(LPMESSAGEDATA lpData, INT Argc, LPOBJV Argv)
 	INT		Int, iDivider;
 	LPTSTR  tszSlash;
 	TCHAR   tszTime[12];
+	char    _ipbuf[INET_ADDRSTRLEN];
 
 	if (! Argc || Object_Get_Int(lpData, &Argv[0], &Int)) return TRUE;
 	//	Get who data
@@ -699,7 +700,8 @@ BOOL MessageObject_Who(LPMESSAGEDATA lpData, INT Argc, LPOBJV Argv)
 		//	Ip
 		lpData->szFormat[lpData->dwFormat - 2]	= 's';
 		InetAddress.s_addr	= pWhoData->OnlineData.ulClientIp;
-		FormatString(lpData->lpOutBuffer, lpData->szFormat, inet_ntoa(InetAddress));
+		InetNtopA(AF_INET, &InetAddress, _ipbuf, sizeof(_ipbuf));
+		FormatString(lpData->lpOutBuffer, lpData->szFormat, _ipbuf);
 		break;
 	case WHO_IDENT:
 		//	Ident
@@ -2313,6 +2315,7 @@ BOOL MessageObject_Service(LPMESSAGEDATA lpData, INT Argc, LPOBJV Argv)
 	DWORD       n;
 	TCHAR       pBuffer[16*1024];  // insanely huge temp buffer for device names just to be safe...
 	INT			iType/*, iDivider*/;
+	char        _ipbuf[INET_ADDRSTRLEN];
 
 	//	Find service
 	if (Argc < 2 ||
@@ -2344,7 +2347,8 @@ BOOL MessageObject_Service(LPMESSAGEDATA lpData, INT Argc, LPOBJV Argv)
 		}
 		else
 		{
-			tszTemp = inet_ntoa(*((struct in_addr *) &lpService->lAddress));
+			InetNtopA(AF_INET, &lpService->lAddress, _ipbuf, sizeof(_ipbuf));
+			tszTemp = _ipbuf;
 		}
 		lpData->szFormat[lpData->dwFormat - 2]	= 's';
 		Put_Buffer_Format(lpData->lpOutBuffer, lpData->szFormat, tszTemp);
@@ -2483,6 +2487,7 @@ BOOL MessageObject_Device(LPMESSAGEDATA lpData, INT Argc, LPOBJV Argv)
 	TCHAR       pBuffer[16*1024];  // insanely huge temp buffer just to be safe...
 	INT			iType, iDivider;
 	LPIOPORT    lpPort;
+	char        _ipbuf[INET_ADDRSTRLEN];
 
 	//	Find device
 	if (Argc < 2 ||
@@ -2520,7 +2525,8 @@ BOOL MessageObject_Device(LPMESSAGEDATA lpData, INT Argc, LPOBJV Argv)
 		}
 		else
 		{
-			tszTemp = inet_ntoa(*((struct in_addr *) &lpDevice->lBindAddress));
+			InetNtopA(AF_INET, &lpDevice->lBindAddress, _ipbuf, sizeof(_ipbuf));
+			tszTemp = _ipbuf;
 		}
 		lpData->szFormat[lpData->dwFormat - 2]	= 's';
 		Put_Buffer_Format(lpData->lpOutBuffer, lpData->szFormat, tszTemp);
@@ -2536,7 +2542,8 @@ BOOL MessageObject_Device(LPMESSAGEDATA lpData, INT Argc, LPOBJV Argv)
 		}
 		else
 		{
-			tszTemp = inet_ntoa(*((struct in_addr *) &lpDevice->lHostAddress));
+			InetNtopA(AF_INET, &lpDevice->lHostAddress, _ipbuf, sizeof(_ipbuf));
+			tszTemp = _ipbuf;
 		}
 		lpData->szFormat[lpData->dwFormat - 2]	= 's';
 		Put_Buffer_Format(lpData->lpOutBuffer, lpData->szFormat, tszTemp);

@@ -347,7 +347,7 @@ UserIpHostMaskKnown(LPTSTR tszHostName, struct in_addr *InetAddress)
 		return TRUE;
 	}
 
-	_stprintf_s(tszIp, sizeof(tszIp)/sizeof(*tszIp), "%hs", inet_ntoa(*InetAddress));
+	InetNtopA(AF_INET, InetAddress, tszIp, sizeof(tszIp));
 
 	while (InterlockedExchange(&UserIpHostMasks.dwLock, TRUE)) SwitchToThread();
 
@@ -472,7 +472,7 @@ ImmuneMatch(LPTSTR tszHostName, struct in_addr *InetAddress)
 {
 	TCHAR    tszIp[32];
 
-	_stprintf_s(tszIp, sizeof(tszIp)/sizeof(*tszIp), "%hs", inet_ntoa(*InetAddress));
+	InetNtopA(AF_INET, InetAddress, tszIp, sizeof(tszIp));
 
 	while (InterlockedExchange(&ImmuneMasks.dwLock, TRUE)) SwitchToThread();
 
@@ -563,7 +563,7 @@ VOID UnbanNetworkAddress(LPTSTR tszNetworkAddressMask, LPBUFFER lpBuffer, LPTSTR
 {
 	LPHOSTINFO lpHostInfo;
 	IN_ADDR    InetAddress;
-	LPSTR      tszAddress;
+	char       tszAddress[INET_ADDRSTRLEN];
 	DWORD      n, dwDiff;
 	ULONGLONG	dwTickCount;
 
@@ -581,7 +581,7 @@ VOID UnbanNetworkAddress(LPTSTR tszNetworkAddressMask, LPBUFFER lpBuffer, LPTSTR
 		{
 			// it's banned so now check IP
 			InetAddress.s_addr = ((PULONG)lpHostInfo->NetworkAddress)[0];
-			tszAddress = inet_ntoa(InetAddress);
+			InetNtopA(AF_INET, &InetAddress, tszAddress, sizeof(tszAddress));
 
 			if (!iCompare(tszNetworkAddressMask, tszAddress))
 			{
@@ -781,7 +781,6 @@ BOOL ResolveThread(LPVOID lpNull)
 	LPNEWCLIENT	lpNewClient, lpNextClient;
 	LPRESOLVE	lpResolve;
 	LPHOSTINFO	lpHostInfo;
-	PHOSTENT	pHostEnt;
 	LPSTR		szHostName, szOldHostName;
 	DWORD		dwHostName, dwCount;
 	SOCKET      Socket;
@@ -804,25 +803,29 @@ BOOL ResolveThread(LPVOID lpNull)
 		Free(lpResolve);
 
 		//	Resolve host
-		pHostEnt	= gethostbyaddr((PCHAR)lpHostInfo->NetworkAddress, lpHostInfo->dwNetworkAddress, AF_INET);
-
-		if (pHostEnt && pHostEnt->h_name &&
-			(dwHostName = (DWORD)strlen(pHostEnt->h_name)) > 0)
 		{
-			if (dwHostName > MAX_HOSTNAME - 1) dwHostName	= MAX_HOSTNAME - 1;
-			//	Allocate shared memory
-			szHostName	= (LPSTR)AllocateShared(NULL, "HostName", dwHostName + 1);
-
-			if (szHostName)
+			struct sockaddr_in _sa = {0};
+			char _szName[MAX_HOSTNAME] = {0};
+			_sa.sin_family = AF_INET;
+			memcpy(&_sa.sin_addr, lpHostInfo->NetworkAddress, sizeof(_sa.sin_addr));
+			if (getnameinfo((struct sockaddr *)&_sa, sizeof(_sa),
+			                _szName, sizeof(_szName), NULL, 0, NI_NAMEREQD) == 0 &&
+			    (dwHostName = (DWORD)strlen(_szName)) > 0)
 			{
-				//	Store string
-				CopyMemory(szHostName, pHostEnt->h_name, dwHostName);
-				szHostName[dwHostName]	= '\0';
-				//	Allocate once more to ensure validity
-				AllocateShared(szHostName, NULL, 0);
+				if (dwHostName > MAX_HOSTNAME - 1) dwHostName = MAX_HOSTNAME - 1;
+				//	Allocate shared memory
+				szHostName = (LPSTR)AllocateShared(NULL, "HostName", dwHostName + 1);
+				if (szHostName)
+				{
+					//	Store string
+					CopyMemory(szHostName, _szName, dwHostName);
+					szHostName[dwHostName] = '\0';
+					//	Allocate once more to ensure validity
+					AllocateShared(szHostName, NULL, 0);
+				}
 			}
+			else szHostName = NULL;
 		}
-		else szHostName	= NULL;
 
 		while (InterlockedExchange(&lpHostInfo->lLock, TRUE)) SwitchToThread();
 		//	Get old hostname
@@ -1902,7 +1905,11 @@ BOOL Identify_Init(BOOL bFirstInitialization)
 				if (! BindSocket(Socket, (ULONG) 0, (USHORT) dwPort, TRUE) &&
 					! listen(Socket, SOMAXCONN))
 				{
-					if (WSAAsyncSelect(Socket, GetMainWindow(), WM_KNOCK, FD_ACCEPT) != SOCKET_ERROR)
+					/* WSAAsyncSelect is deprecated but replacing it with WSAEventSelect requires
+			   reworking the knock-port notification path (window messages → event objects).
+			   Deferred. Suppress the C4996 for this one call site. */
+#pragma warning(suppress: 4996)
+			if (WSAAsyncSelect(Socket, GetMainWindow(), WM_KNOCK, FD_ACCEPT) != SOCKET_ERROR)
 					{
 						lpdwKnockPorts[m] = dwPort;
 						lpKnockSocket[m++] = Socket;

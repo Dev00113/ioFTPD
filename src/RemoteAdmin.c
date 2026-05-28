@@ -3548,6 +3548,7 @@ LPTSTR Admin_Bans(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRING Args)
 	IN_ADDR			InetAddress;
 	LPBUFFER		lpBuffer;
 	LPTSTR			tszNetworkAddress, tszCommand;
+	char			_ipbuf[INET_ADDRSTRLEN];
 
 	if (GetStringItems(Args) < 2) ERROR_RETURN(ERROR_MISSING_ARGUMENT, GetStringIndexStatic(Args, 0));
 	if (GetStringItems(Args) > 3) ERROR_RETURN(ERROR_INVALID_ARGUMENTS, GetStringRange(Args, 3, STR_END));
@@ -3578,8 +3579,9 @@ LPTSTR Admin_Bans(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRING Args)
 			{
 			case 4:
 				InetAddress.s_addr	= ((PULONG)lpBanInfo->pNetworkAddress)[0];
-				tszNetworkAddress	= inet_ntoa(InetAddress);
-				if (tszNetworkAddress) break;
+				InetNtopA(AF_INET, &InetAddress, _ipbuf, sizeof(_ipbuf));
+				tszNetworkAddress = _ipbuf;
+				break;
 			default:
 				tszNetworkAddress	= _TEXT("Unknown address");
 			}

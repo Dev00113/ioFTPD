@@ -660,7 +660,7 @@ FTP_Identify(LPFTPUSER lpUser,
 	if (!lpService) goto logoff;
 
 	szHostName  = lpUser->Connection.szHostName;
-	sprintf(szIp, "%s", inet_ntoa(lpUser->Connection.ClientAddress.sin_addr));
+	InetNtopA(AF_INET, &lpUser->Connection.ClientAddress.sin_addr, szIp, sizeof(szIp));
 	bFound = FALSE;
 
 	AcquireSharedLock(&lpService->loLock);
@@ -725,7 +725,8 @@ FTP_Identify(LPFTPUSER lpUser,
   CopyMemory(szIdent, szLine, dwIdent);
   CopyMemory(szHostName, &pSemicolon[1], dwHostName);
 
-  addr.s_addr = lAddress  = inet_addr(&pAt[1]);
+  if (InetPtonA(AF_INET, &pAt[1], &addr) != 1) goto logoff;
+  lAddress = addr.s_addr;
 
   // You can never IDNT the loopback address or a local non-routable address
   if ((addr.s_net == 10) || (addr.s_net == 127) ||
@@ -738,7 +739,7 @@ FTP_Identify(LPFTPUSER lpUser,
   // catch BNC's that don't reverse resolve and just use IP...
   if (szHostName && IsNumericIP(szHostName))
   {
-	  addr2.s_addr = inet_addr(szHostName);
+	  InetPtonA(AF_INET, szHostName, &addr2);
 	  if (!memcmp(&addr, &addr2, sizeof(addr)))
 	  {
 		  FreeShared(szHostName);
@@ -2330,7 +2331,7 @@ static VOID FTP_SendShutdown(LPFTPUSER lpUser, DWORD dwLastError, INT64 i64Total
 {
   if (dwLastError != NO_ERROR)
   {
-    WSASendDisconnect(lpUser->CommandChannel.Socket.Socket, NULL);
+    shutdown(lpUser->CommandChannel.Socket.Socket, SD_SEND);
     CloseSocket(&lpUser->CommandChannel.Socket, FALSE);
   }
   EndClientJob(lpUser->Connection.dwUniqueId, 2);

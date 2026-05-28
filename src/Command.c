@@ -999,7 +999,6 @@ User_CheckIp(PCONNECTION_INFO pConnection,
 	CHAR      szMatchBuf[_IP_LINE_LENGTH + 1];
 	INT       i;
 	BOOL      bNumeric, bBlocking, bReturn, bDynamic, bMatch;
-	PHOSTENT	pHostEnt;
 	ULONGLONG dwStart, dwStop;
 	DWORD     dwAddr, dwLen;
 
@@ -1014,7 +1013,7 @@ User_CheckIp(PCONNECTION_INFO pConnection,
 	szIdent = (pConnection->szIdent ? pConnection->szIdent : "*");
 	//  Get hostname
 	szHostName = pConnection->szHostName;
-	sprintf(szIp, "%s", inet_ntoa(pConnection->ClientAddress.sin_addr));
+	InetNtopA(AF_INET, &pConnection->ClientAddress.sin_addr, szIp, sizeof(szIp));
 
 	for (; bReturn && !bDynamic; bDynamic = TRUE)
 	{
@@ -1072,11 +1071,13 @@ User_CheckIp(PCONNECTION_INFO pConnection,
 					SetBlockingThreadFlag();
 				}
 
-				pHostEnt = gethostbyname(szHost);
-
-				if (!pHostEnt || !pHostEnt->h_addr_list[0]) continue;
-
-				dwAddr = *((ULONG*)pHostEnt->h_addr_list[0]);
+			{
+				struct addrinfo _hints = {0}, *_pRes = NULL;
+				_hints.ai_family = AF_INET;
+				if (getaddrinfo(szHost, NULL, &_hints, &_pRes) != 0 || !_pRes) continue;
+				dwAddr = ((struct sockaddr_in *)_pRes->ai_addr)->sin_addr.s_addr;
+				freeaddrinfo(_pRes);
+			}
 				if (pConnection->ClientAddress.sin_addr.s_addr != dwAddr) continue;
 			}
 
