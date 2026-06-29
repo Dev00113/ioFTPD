@@ -210,7 +210,45 @@ internally (ERROR_FILENAME_EXCED_RANGE, ERROR_INVALID_NAME,
 ERROR_PATH_NOT_FOUND, or ERROR_FILE_NOT_FOUND for very long paths).
 
 
-|--------------------------------------------------(0x05)---------(support)--|
+|--------------------------------------------(0x05)-----(network-mounts)--|
+
+### Network Mount Manager (v8.1.0+)
+
+ioFTPD automatically monitors and reconnects UNC network shares
+(\\server\share\...) referenced in .vfs files, without any manual
+intervention or daemon restart.
+
+How it works:
+  - Every UNC share root found in a loaded .vfs file is registered in a
+    health table.  A background timer probes each share on a configurable
+    interval (default 60s) and reconnects automatically if it drops.
+  - IoCreateFile retries inline on a dropped connection (ERROR_NETNAME_DELETED)
+    so most reconnects are transparent to the FTP client.
+  - A NotifyAddrChange watch thread wakes all down shares the moment any
+    network interface changes state (NIC reconnect, DHCP renew, VPN connect).
+
+No configuration is required for monitoring to work.  An optional credential
+file (etc\netmounts.cfg) is only needed for shares that require a username
+and password different from the account ioFTPD runs as:
+
+  [Ftp]
+  Network_Mounts_File        = etc\netmounts.cfg
+  Network_Check_Interval     = 60
+  Network_Max_Retry_Interval = 300
+
+See etc\netmounts.cfg for the credential file format, and 
+docs\network-mounts.md in the source repository for full details including 
+troubleshooting and SMB compatibility notes.
+
+Session 0 note: ioFTPD runs as a Windows service in Session 0.  Drive
+letters mapped by an interactive user are NOT visible to the service —
+use UNC paths directly in .vfs files for network shares.
+
+SITE REHASH reloads etc\netmounts.cfg without a daemon restart; credential
+changes take effect on the next reconnect attempt.
+
+
+|--------------------------------------------------(0x06)---------(support)--|
 
 The preferred place for support, bug reporting, script info, source code, and
 general help is via the ioFTPD user's and developer's forum:

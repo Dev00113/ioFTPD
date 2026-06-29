@@ -96,6 +96,7 @@
 #include <AdminCommands.h>
 #include <IoTcl.h>
 #include <SHA1.h>
+#include <NetworkMount.h>
 
 
 #define	CopyString	strcpy

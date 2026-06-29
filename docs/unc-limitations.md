@@ -6,6 +6,11 @@ title: UNC Path Limitations
 
 UNC and SMB paths behave very differently from local NTFS paths, even when Windows long‑path support is enabled. This page explains the real limitations of SMB, why long paths may still fail, and how ioFTPD behaves when operating on UNC shares.
 
+> **v8.1.0 and later:** ioFTPD now automatically monitors and reconnects UNC shares
+> referenced in `.vfs` files. Session 0 isolation, credential management, and health
+> monitoring are handled for you — see [Network Mount Manager](network-mounts.md) for
+> the full feature guide.
+
 ---
 
 ## Overview

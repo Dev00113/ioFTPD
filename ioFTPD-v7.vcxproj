@@ -118,7 +118,7 @@
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>mswsock.lib;ws2_32.lib;tcl90.lib;crypt32.lib;version.lib;shlwapi.lib;pdh.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>mswsock.lib;ws2_32.lib;iphlpapi.lib;mpr.lib;tcl90.lib;crypt32.lib;version.lib;shlwapi.lib;pdh.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>..\ioFTPD\system\ioFTPD-debug.exe</OutputFile>
       <AdditionalLibraryDirectories>..\ioFTPD\system;C:\Dev\Libs\VS2022\x86\TCL\Shared\Release\lib;C:\Dev\Libs\VS2022\x86\OpenSSL\Shared\Release\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -146,7 +146,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>mswsock.lib;ws2_32.lib;tcl90.lib;version.lib;shlwapi.lib;pdh.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>mswsock.lib;ws2_32.lib;iphlpapi.lib;mpr.lib;tcl90.lib;version.lib;shlwapi.lib;pdh.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>..\ioFTPD\system\ioFTPD.exe</OutputFile>
       <AdditionalLibraryDirectories>..\ioFTPD\system;C:\Dev\Libs\VS2022\x86\TCL\Shared\Release\lib;C:\Dev\Libs\VS2022\x86\OpenSSL\Shared\Release\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -184,7 +184,7 @@
     </ProjectReference>
     <Link>
       <AdditionalOptions>/fixed:no %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>Kernel32.lib;mswsock.lib;ws2_32.lib;tcl90.lib;version.lib;shlwapi.lib;pdh.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>Kernel32.lib;mswsock.lib;ws2_32.lib;iphlpapi.lib;mpr.lib;tcl90.lib;version.lib;shlwapi.lib;pdh.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>..\ioFTPD\system\ioFTPD-purify.exe</OutputFile>
       <AdditionalLibraryDirectories>..\ioFTPD\system;C:\Dev\Libs\VS2022\x86\TCL\Shared\Release\lib;C:\Dev\Libs\VS2022\x86\OpenSSL\Shared\Release\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -213,7 +213,7 @@
       <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>mswsock.lib;ws2_32.lib;tcl90.lib;version.lib;shlwapi.lib;pdh.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>mswsock.lib;ws2_32.lib;iphlpapi.lib;mpr.lib;tcl90.lib;version.lib;shlwapi.lib;pdh.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>..\ioFTPD\system\x64\ioFTPD.exe</OutputFile>
       <AdditionalLibraryDirectories>C:\Dev\Libs\VS2022\x64\TCL\Shared\Release\lib;C:\Dev\Libs\VS2022\x64\OpenSSL\Shared\Release\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -243,7 +243,7 @@
       <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>mswsock.lib;ws2_32.lib;tcl90.lib;crypt32.lib;version.lib;shlwapi.lib;pdh.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>mswsock.lib;ws2_32.lib;iphlpapi.lib;mpr.lib;tcl90.lib;crypt32.lib;version.lib;shlwapi.lib;pdh.lib;libssl.lib;libcrypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>..\ioFTPD\system\x64\ioFTPD-debug.exe</OutputFile>
       <AdditionalLibraryDirectories>C:\Dev\Libs\VS2022\x64\TCL\Shared\Release\lib;C:\Dev\Libs\VS2022\x64\OpenSSL\Shared\Release\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -285,6 +285,7 @@
     <ClCompile Include="src\LongPath.c" />
     <ClCompile Include="src\Main.c" />
     <ClCompile Include="src\Memory.c" />
+    <ClCompile Include="src\NetworkMount.c" />
     <ClCompile Include="src\Message.c" />
     <ClCompile Include="src\MessageHandler.c" />
     <ClCompile Include="src\MessageObjects.c" />

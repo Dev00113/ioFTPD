@@ -171,6 +171,7 @@ static INIT_TABLE Init_Table[] =
   "Message",         Message_Init,         Message_DeInit,         0, 0,
   "Help",            Help_Init,            Help_DeInit,            0, 0,
   "MountFile",       MountFile_Init,       MountFile_DeInit,       0, 0,
+  "NetworkMount",    NetworkMount_Init,    NetworkMount_DeInit,    0, 0,
   "DirectoryCache",  DirectoryCache_Init,  DirectoryCache_DeInit,  0, 0,
   "Group",           Group_Init,           Group_DeInit,           0, 3,
   "User",            User_Init,            User_DeInit,            0, 3,

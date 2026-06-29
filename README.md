@@ -331,13 +331,31 @@ The server reads `ioFTPD.ini` (or a path specified on the command line) at start
 
 | Section | Notable Keys |
 |---------|-------------|
-| `[FTP]` | `Idle_TimeOut`, `Login_TimeOut`, `Login_Attempts`, `Transfer_Buffer`, `Socket_Send_Buffer`, `Idle_Exempt`, `Banned_User_Flag`, `Quiet_Login_Flag`, `Long_Path_Support` |
+| `[FTP]` | `Idle_TimeOut`, `Login_TimeOut`, `Login_Attempts`, `Transfer_Buffer`, `Socket_Send_Buffer`, `Idle_Exempt`, `Banned_User_Flag`, `Quiet_Login_Flag`, `Long_Path_Support`, `Network_Mounts_File`, `Network_Check_Interval`, `Network_Max_Retry_Interval` |
 | `[Events]` | `OnServerStart`, `OnServerStop`, `OnFtpLogOut`, `OnFtpUpload`, `OnFtpDownload` |
 | `[Network]` | `Log_OpenSSL_Transfer_Errors`, `Scheduler_Update_Speed` |
 | `[VFS_PreLoad]` | `DELAY` |
 | `[Services]` | FTP service definitions (port, device binding, TLS settings) |
 
 Configuration is live-reloadable for many settings via `SITE CONFIG RELOAD` or equivalent events.
+
+### Network Mount Manager
+
+From v8.1.0, ioFTPD automatically monitors and reconnects every UNC share
+(`\\server\share\...`) referenced in `.vfs` files. No configuration is required for
+health monitoring — it is always on for UNC paths.
+
+An optional credential file (`etc\netmounts.cfg`) provides usernames and passwords for
+shares that require credentials different from the Windows account ioFTPD runs as.
+
+> **Important:** Entries in `netmounts.cfg` are matched as **literal strings**
+> (case-insensitive). The UNC path must be written identically in both `netmounts.cfg`
+> and your `.vfs` file. Using an IP address in one file and a hostname in the other, or
+> a short hostname in one and a FQDN in the other, will result in credentials silently
+> not being applied — there is no error logged.
+
+See [docs/network-mounts.md](docs/network-mounts.md) for the full feature guide including
+configuration options, health monitoring behaviour, SMB compatibility, and troubleshooting.
 
 ---
 

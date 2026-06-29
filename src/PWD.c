@@ -2093,6 +2093,10 @@ MOUNTFILE MountFile_Parse(LPVOID lpBuffer, DWORD dwBuffer, LPSTR szVfsFileName)
 				lpItem = &lpMountPoint->lpSubMount[lpMountPoint->dwSubMounts++];
 				lpItem->dwFileName  = dwFileName;
 				lpItem->szFileName  = szFileName;
+
+				// Auto-register UNC paths for network health monitoring
+				if (szFileName[0] == '\\' && szFileName[1] == '\\')
+					NetworkMount_Register(szFileName);
 			}
 			else
 			{

@@ -1,3 +1,76 @@
+v8.1.0 Release Notes (2026-06-04):
+
+v8.1.0 adds automatic UNC network share management.  No configuration
+changes are required to benefit from health monitoring — UNC shares
+already in .vfs files are monitored automatically.
+
+*** Files in \System ***
+
+  Both builds:
+    Changed : system\ioFTPD.exe      - Version 8.1.0.0
+    Changed : system\ioFTPD.pdb
+
+*** Changes in both x64 and Win32 builds ***
+
+1) Native network mount manager (src/NetworkMount.c, include/NetworkMount.h).
+   ioFTPD now monitors and automatically reconnects UNC network shares
+   referenced in .vfs files without any manual intervention or daemon
+   restart.
+
+   - Automatic health monitoring: every UNC share root (\\server\share)
+     found in any loaded .vfs file is registered in a health table at
+     parse time.  One background timer per share root probes the share via
+     GetFileAttributesA on a configurable interval (default 60s).  Probes
+     run on job-pool worker threads; FTP throughput and I/O threads are
+     unaffected.
+
+   - Exponential backoff on failure: 10s, 20s, 40s, 80s, 160s, capped at
+     Network_Max_Retry_Interval (default 300s).  Recovery resets the
+     interval to the configured check interval immediately.
+
+   - Inline reactive reconnect: IoCreateFile detects ERROR_NETNAME_DELETED
+     (dropped connection, server still reachable) and attempts one
+     synchronous WNetAddConnection2A + file-open retry on the calling
+     thread before returning a failure to the FTP layer.
+
+   - NotifyAddrChange watch thread: a dedicated low-priority thread listens
+     for Windows network interface state changes via overlapped
+     NotifyAddrChange (iphlpapi.h).  When any NIC comes back online all
+     currently-down shares are immediately retried rather than waiting for
+     the next timer tick.  Retries registration every 30s if it fails at
+     startup.
+
+   - Optional credential file etc\netmounts.cfg: provides per-share
+     credentials (username, password, domain) for shares requiring
+     authentication different from the service account.  Entirely
+     optional — shares without a credential entry use the service
+     account's own Windows identity.  Credentials are zeroed from memory
+     with SecureZeroMemory at shutdown.  Template included in
+     Documents\netmounts.cfg.
+
+   - SITE REHASH support: credential file and interval config keys are
+     reloaded without a daemon restart.
+
+   - Human-readable error messages for common WNetAddConnection2A failure
+     codes (access denied, wrong password, server not found, network
+     unreachable, no network).  SMBv1-only NAS devices are detected via the
+     MrxSmb10 registry key and given a specific actionable log message.
+
+   - Startup stagger: initial probes spread 2.5s apart per share to avoid a
+     thundering herd of simultaneous GetFileAttributesA calls at startup.
+
+2) New [Ftp] ini config keys:
+     Network_Mounts_File        = etc\netmounts.cfg   (optional, default shown)
+     Network_Check_Interval     = 60                  (seconds, min 5)
+     Network_Max_Retry_Interval = 300                  (seconds, min 10)
+
+*** Build ***
+
+  iphlpapi.lib and mpr.lib added to AdditionalDependencies in all linker
+  configurations for NotifyAddrChange and the WNet* APIs respectively.
+
+
+-------------------------------------------------------------------------------
 v8.0.0 Release Notes (2026-05-22):
 
 v8.0.0 ships two builds (32bit and 64bit) from the same source.

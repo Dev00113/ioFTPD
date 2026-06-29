@@ -10,12 +10,12 @@ A modernized continuation of the classic Windows FTP server, updated for today's
 
 ## Latest Stable Release
 
-**Version:** v8.0.0  
-**Release date:** 2026‑05‑22  
+**Version:** v8.1.0  
+**Release date:** 2026‑06‑04  
 **Download:**  
-https://github.com/Dev00113/ioFTPD/releases/tag/v8.0.0
+https://github.com/Dev00113/ioFTPD/releases/tag/v8.1.0
 
-v8.0.0 is a major release that introduces a native 64-bit build alongside the existing Win32 build. Both ship from the same source.
+v8.1.0 adds automatic UNC network share management. No configuration changes are required to benefit from health monitoring — UNC shares already in `.vfs` files are monitored automatically.
 
 ### Prerequisites
 
@@ -26,10 +26,36 @@ v8.0.0 is a major release that introduces a native 64-bit build alongside the ex
 **Win32 build** — install:
 - [Visual C++ 2015-2022 x86](https://aka.ms/vs/17/release/vc_redist.x86.exe)
 
-### Breaking Change
+### What's New in v8.1.0
+
+- **[Network Mount Manager](network-mounts.md)** — ioFTPD automatically discovers, monitors, and reconnects every UNC share (`\\server\share\...`) referenced in `.vfs` files
+  - Three protection layers: background health probe (configurable interval), inline retry on `ERROR_NETNAME_DELETED`, and instant wake on NIC state change via `NotifyAddrChange`
+  - Optional credential file (`etc\netmounts.cfg`) for shares that require a username/password different from the ioFTPD service account
+  - Exponential backoff when a share is offline; resets to normal interval on recovery
+  - `SITE REHASH` reloads credentials without restarting the daemon
+  - Three new `[Ftp]` INI keys: `Network_Mounts_File`, `Network_Check_Interval`, `Network_Max_Retry_Interval`
+- See [Changelog](changelog.md) for the full list.
+
+### Upgrading to v8.1.0
+
+No configuration changes are required. Drop in the new binary — UNC share monitoring
+starts automatically for all `.vfs` entries.
+
+To configure credentials for shares that need them, see [Network Mount Manager](network-mounts.md).
+
+---
+
+## Previous Release: v8.0.0
+
+**Release date:** 2026‑05‑22  
+**Download:** https://github.com/Dev00113/ioFTPD/releases/tag/v8.0.0
+
+v8.0.0 introduced a native 64-bit build alongside the existing Win32 build.
+
+### Breaking Change (v8.0.0)
 
 > The **ioFTPD Message Window** (`WM_DATACOPY_FILEMAP` / `WM_SHMEM`) wire protocol
-> has changed. External IPC clients must be rebuilt against the v8.0 headers.
+> changed in v8.0.0. External IPC clients must be rebuilt against the v8.0 headers.
 > 32-bit IPC clients work with the Win32 build only — the x64 build rejects 32-bit senders.
 
 ### What's New in v8.0.0
@@ -109,6 +135,12 @@ Certificate_Type = RSA     ; RSA (default) or ECDSA
 ---
 
 ## Upgrading
+
+### Upgrading to v8.1.0
+
+Drop in the new binary. No configuration changes are required. UNC share monitoring
+starts automatically. To add credentials for shares that need them, create
+`etc\netmounts.cfg` — see [Network Mount Manager](network-mounts.md).
 
 ### Upgrading to v8.0.0
 

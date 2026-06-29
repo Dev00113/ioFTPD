@@ -1138,6 +1138,29 @@ IoCreateFile(LPCTSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
         dwErr != ERROR_DIRECTORY           &&
         dwErr != ERROR_INVALID_HANDLE)
     {
+        // Check for transient network errors on managed UNC shares.
+        // For ERROR_NETNAME_DELETED specifically, attempt a synchronous inline
+        // reconnect (server likely still reachable — connection just dropped).
+        // For other network errors, flag the share as down and let the background
+        // timer handle reconnection.
+        switch (dwErr)
+        {
+        case ERROR_NETNAME_DELETED:
+        case ERROR_BAD_NETPATH:
+        case ERROR_NO_NET_OR_BAD_PATH:
+        case ERROR_NETWORK_BUSY:
+        case ERROR_DEV_NOT_EXIST:
+        case ERROR_REM_NOT_LIST:
+        case ERROR_NOT_CONNECTED:
+        case ERROR_CONNECTION_ABORTED:
+        case ERROR_CONNECTION_INVALID:
+            return NetworkMount_TryReconnect(
+                       lpFileName, dwDesiredAccess, dwShareMode,
+                       lpSecurityAttributes, dwCreationDisposition,
+                       dwFlagsAndAttributes, hTemplateFile, dwErr);
+        default:
+            break;
+        }
         SetLastError(dwErr);
         return INVALID_HANDLE_VALUE;
     }

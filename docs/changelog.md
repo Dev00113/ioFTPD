@@ -10,6 +10,75 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [8.1.0] — 2026-06-04
+
+### Added
+
+- **Native network mount manager** (`src/NetworkMount.c`, `include/NetworkMount.h`) —
+  ioFTPD now monitors and automatically reconnects UNC network shares referenced in
+  `.vfs` files without any manual intervention or daemon restart.
+
+  - **Automatic health monitoring** — every UNC share root (`\\server\share`) found in
+    any loaded `.vfs` file is registered in a health table at parse time.  One background
+    timer per share root probes the share via `GetFileAttributesA` on a configurable
+    interval (default 60 s).  Probes run on job-pool worker threads; FTP throughput and
+    I/O threads are completely unaffected.
+
+  - **Exponential backoff on failure** — when a probe fails the timer retries at 10 s,
+    20 s, 40 s, 80 s, 160 s, capped at `Network_Max_Retry_Interval` (default 300 s).
+    On recovery the interval returns to the configured check interval immediately.
+
+  - **Inline reactive reconnect** — `IoCreateFile` detects `ERROR_NETNAME_DELETED`
+    (dropped connection, server still reachable) and attempts one synchronous
+    `WNetAddConnection2A` + file-open retry on the calling thread before returning a
+    failure to the FTP layer.  All other network error codes mark the share down and
+    let the background timer handle reconnection.
+
+  - **`NotifyAddrChange` watch thread** — a dedicated low-priority thread listens for
+    Windows network interface state changes via overlapped `NotifyAddrChange`
+    (`iphlpapi.h`).  When any NIC comes back online all currently-down shares are
+    immediately retried rather than waiting for the next timer tick.  If registration
+    fails at startup (e.g. network stack not yet ready), the thread retries every 30 s.
+
+  - **Optional credential file `etc\netmounts.cfg`** — provides per-share credentials
+    (`username`, `password`, `domain`) for shares that require authentication different
+    from the service account.  The file is entirely optional: shares without a
+    credential entry are monitored and reconnected using the service account's own
+    Windows identity.  Credentials are zeroed from memory with `SecureZeroMemory` at
+    shutdown.  A fully documented template is included in `Documents\netmounts.cfg`.
+
+  - **`SITE REHASH` support** — credential file and interval config keys are reloaded
+    without a daemon restart.  Updated credentials take effect on the next reconnect
+    attempt.
+
+  - **Human-readable error messages** — all common `WNetAddConnection2A` failure codes
+    (access denied, wrong password, server not found, network unreachable, no network)
+    are translated to plain-English log entries with actionable hints.  On errors
+    `ERROR_UNEXP_NET_ERR` (59) and `ERROR_NOT_SUPPORTED` (50) the registry key
+    `HKLM\SYSTEM\CurrentControlSet\Services\MrxSmb10\Start` is checked: if SMBv1 is
+    disabled a specific log message identifies the root cause and recommends upgrading
+    the remote device to SMBv2 or later.
+
+  - **Startup stagger** — initial probes are spread 2.5 s apart per share to avoid
+    a thundering-herd of simultaneous `GetFileAttributesA` calls at service start.
+
+- **New `[Ftp]` ini config keys:**
+  - `Network_Mounts_File` — path to the optional credential file (relative to the
+    ioFTPD.exe directory or absolute); absent key disables credential-based reconnect
+    while keeping health monitoring active.
+  - `Network_Check_Interval` — seconds between probes on a healthy share (default: 60,
+    minimum: 5).
+  - `Network_Max_Retry_Interval` — maximum seconds between reconnect attempts on an
+    offline share (default: 300, minimum: 10).
+
+### Build
+
+- **`iphlpapi.lib`** and **`mpr.lib`** added to `AdditionalDependencies` in all linker
+  configurations (Win32 Release, x64 Release, Win32 Debug) for `NotifyAddrChange` and
+  the `WNet*` APIs respectively.
+
+---
+
 ## [8.0.0] — 2026-05-22
 
 > **Breaking change** — the DataCopy shared-memory IPC wire format has changed.
