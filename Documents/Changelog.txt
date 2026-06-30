@@ -1,4 +1,4 @@
-v8.1.0 Release Notes (2026-06-04):
+v8.1.0 Release Notes (2026-06-29):
 
 v8.1.0 adds automatic UNC network share management.  No configuration
 changes are required to benefit from health monitoring — UNC shares
