@@ -11,7 +11,7 @@ A modernized continuation of the classic Windows FTP server, updated for today's
 ## Latest Stable Release
 
 **Version:** v8.1.0  
-**Release date:** 2026‑06‑04  
+**Release date:** 2026‑06‑29  
 **Download:**  
 https://github.com/Dev00113/ioFTPD/releases/tag/v8.1.0
 
