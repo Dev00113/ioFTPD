@@ -1,3 +1,41 @@
+v8.1.1 Release Notes (TBD):
+
+v8.1.1 is a bug-fix release for plain (non-TLS) FTP listings and downloads.
+TLS (PROT P) transfers are unchanged.  No configuration changes are required.
+
+*** Files in \System ***
+
+  Both builds:
+    Changed : system\ioFTPD.exe      - Version 8.1.1.0
+    Changed : system\ioFTPD.pdb
+
+*** Changes in both x64 and Win32 builds ***
+
+1) Fixed: plain (non-TLS) listings and downloads failed with 426.
+   Every transfer over an unencrypted data connection (LIST, NLST, MLSD,
+   RETR) ended with:
+     426 Connection closed: The system detected an invalid pointer address
+     in attempting to use a pointer argument in a call.
+   The data was sent, but the final half-close step posted a receive with
+   a NULL buffer and failed with WSAEFAULT.  Present since v7.9.0.
+
+2) Fixed: plain (non-TLS) downloads now use the same buffered send path as
+   TLS downloads.  The previous TransmitFile-based path had these defects,
+   all of which are fixed:
+
+   - Resume (REST) ignored: a resumed download was sent again from byte 0,
+     leaving the client with a corrupt file.
+   - Downloads taking longer than Data_Timeout (default 120s) were cut off.
+   - Files of 2 GB or more failed to download.
+   - Zero-byte files failed and were reported as a closed connection.
+   - Per-user download speed limits were not applied.
+   - The download CRC was never calculated, so the reported value was wrong.
+   - SITE WHO showed no transfer speed while a download was in progress.
+   - On Windows 10/11 hosts only two plain downloads could run at once
+     system-wide; further downloads stalled until one finished.
+
+
+-------------------------------------------------------------------------------
 v8.1.0 Release Notes (2026-06-29):
 
 v8.1.0 adds automatic UNC network share management.  No configuration

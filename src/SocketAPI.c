@@ -1315,8 +1315,13 @@ static VOID TransmitPackage_Shutdown(LPPACKAGETRANSFER lpTransfer,
             Socket_HalfCloseSend(lpSocket->Socket);
 
             // Now wait for a 0-byte read from the peer to confirm closure.
+            // The shutdown package has no data buffer (buf is NULL), so receive into the
+            // storage of the 'buf' pointer field itself.  Note the '&': passing buf (NULL)
+            // makes WSARecv fail with WSAEFAULT and every plain data transfer ends in 426.
+            // Clobbering the field is harmless: bAllocated is FALSE for this package, so
+            // the pointer is never freed or read again.
             lpOverRecv->Buffer.len = sizeof(lpIoBuffer->buf);
-            lpOverRecv->Buffer.buf = (PCHAR)lpIoBuffer->buf;
+            lpOverRecv->Buffer.buf = (PCHAR)&lpIoBuffer->buf;
 
             if (ReceiveOverlapped(lpSocket, lpOverRecv)) {
                 DWORD dwErr = WSAGetLastError();
@@ -1517,34 +1522,6 @@ static VOID TransmitPackage_Shutdown(LPPACKAGETRANSFER lpTransfer,
     }
 }
 
-// Fix #2: dedicated completion handler for the TransmitFile zero-copy fast path.
-// TransmitPackage_WriteSocket must not be used here because the fast path leaves
-// lpIoBuffer->len = 0, which triggers a DWORD underflow (0 - fileSize ≈ 4 GB).
-// This handler simply credits the bytes and advances the state machine.
-static VOID
-TransmitPackage_WriteFileDirect(LPPACKAGETRANSFER lpTransfer,
-    DWORD dwBytesWritten, DWORD dwLastError)
-{
-    if (dwLastError != NO_ERROR)
-    {
-        TransmitPackages_Error(lpTransfer, dwLastError);
-        return;
-    }
-    if (dwBytesWritten == 0)
-    {
-        TransmitPackages_Closed(lpTransfer);
-        return;
-    }
-    lpTransfer->i64Total += dwBytesWritten;
-    TransmitPackagePerTransmit(lpTransfer, dwBytesWritten);
-    // Fix #2: TransmitFile sent the entire file in one shot; lpBuffer->bProcessed is already
-    // TRUE (set before TransmitFile was posted).  Call TransmitPackages_Update directly —
-    // NOT TransmitPackages_Continue — because lpContinueProc is set to TransmitPackage_ReadFile
-    // (the buffered path's chunk loop) and calling it would spuriously re-initiate a file read
-    // with lpIoBuffer->buf == NULL (fast path never allocated a buffer), causing heap corruption.
-    TransmitPackages_Update(lpTransfer, TRUE);
-}
-
 static
 BOOL TransmitPackages_Update(LPPACKAGETRANSFER lpTransfer, BOOL bIoCallback)
 {
@@ -1602,66 +1579,15 @@ BOOL TransmitPackages_Update(LPPACKAGETRANSFER lpTransfer, BOOL bIoCallback)
     {
         lpTransfer->lpContinueProc = TransmitPackage_ReadFile;
 
-        // Ensure a WAN-friendly minimum buffer size for the TLS buffered path.
+        // Ensure a WAN-friendly minimum buffer size.
         // Only bump when we will allocate the buffer ourselves (buf == NULL).
         // If the caller supplied a pre-allocated buffer its capacity is fixed;
         // exceeding it with IoReadFile writes past the allocation boundary.
         if (!lpBuffer->buf && lpBuffer->size < (128 * 1024)) lpBuffer->size = (128 * 1024);
 
-        // Fast path for non-TLS: use TransmitFile to maximize throughput (zero-copy)
-        if (!lpSocket->lpSecure && lpBuffer->ioFile && lpBuffer->ioFile->FileHandle != INVALID_HANDLE_VALUE)
-        {
-            LPSOCKETOVERLAPPED lpSendOv = &lpSocket->Overlapped[1];
-
-            // Fix #2: route the IOCP completion to the dedicated handler, NOT to
-            // TransmitPackage_WriteSocket which would compute (0 - fileSize) underflow.
-            lpSendOv->lpProc    = TransmitPackage_WriteFileDirect;
-            lpSendOv->lpContext = lpTransfer;
-
-            // Mark processed BEFORE TransmitFile so state is consistent if the timer
-            // fires or a cancellation arrives during/after the post.
-            lpBuffer->bProcessed = TRUE;
-
-            // Start the timer BEFORE TransmitFile.  If the timer is started after,
-            // a race exists: TransmitFile can complete, the IOCP fires, the transfer
-            // advances through TransmitPackages_Update → Complete → QueueJob, a
-            // worker thread calls Free(lpTransfer) — all before StartIoTimer returns
-            // on this thread.  When that timer then fires it accesses freed memory →
-            // STATUS_HEAP_CORRUPTION (0xc0000374).  Starting the timer first ensures
-            // lpTransfer->lpTimer is set before any other thread can touch lpTransfer.
-            if (lpBuffer->dwTimerType != NO_TIMER && !lpTransfer->lpTimer)
-            {
-                lpTransfer->lpTimer = StartIoTimer(NULL, TransmitPackage_Timer, lpTransfer, lpBuffer->dwTimeOut);
-                if (!lpTransfer->lpTimer)
-                {
-                    lpBuffer->bProcessed = FALSE;   // undo; TransmitFile not yet posted
-                    TransmitPackages_Error(lpTransfer, GetLastError());
-                    return FALSE;
-                }
-            }
-
-            // Send entire file (0 size => entire file), overlapped completion via IOCP.
-            // After this call returns, lpTransfer may be freed by a concurrent IOCP
-            // thread at any moment — do not touch lpTransfer after this point.
-            BOOL ok = TransmitFile(lpSocket->Socket,
-                lpBuffer->ioFile->FileHandle,
-                0, 0,
-                (LPOVERLAPPED)lpSendOv,
-                NULL,
-                0);
-            if (!ok)
-            {
-                int err = WSAGetLastError();
-                if (err != WSA_IO_PENDING)
-                {
-                    TransmitPackages_Error(lpTransfer, err);
-                    return FALSE;
-                }
-            }
-            return TRUE;
-        }
-
-        // Buffered path (TLS or no TransmitFile)
+        // Buffered read/send loop for both plain and TLS sockets.  It honours the REST
+        // offset (IoFile.Overlapped), resets the per-transmit timer on every chunk,
+        // applies SEND_LIMIT, computes the CRC and reports the transfer rate.
         lpOverlapped = &lpSocket->Overlapped[1];
         lpOverlapped->lpContext = lpTransfer;
 

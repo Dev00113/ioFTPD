@@ -10,12 +10,12 @@ A modernized continuation of the classic Windows FTP server, updated for today's
 
 ## Latest Stable Release
 
-**Version:** v8.1.0  
-**Release date:** 2026‑06‑29  
+**Version:** v8.1.1  
+**Release date:** TBD  
 **Download:**  
-https://github.com/Dev00113/ioFTPD/releases/tag/v8.1.0
+https://github.com/Dev00113/ioFTPD/releases/tag/v8.1.1
 
-v8.1.0 adds automatic UNC network share management. No configuration changes are required to benefit from health monitoring — UNC shares already in `.vfs` files are monitored automatically.
+v8.1.1 is a bug-fix release for plain (non-TLS) FTP listings and downloads. TLS transfers are unchanged.
 
 ### Prerequisites
 
@@ -25,6 +25,31 @@ v8.1.0 adds automatic UNC network share management. No configuration changes are
 
 **Win32 build** — install:
 - [Visual C++ 2015-2022 x86](https://aka.ms/vs/17/release/vc_redist.x86.exe)
+
+### What's Fixed in v8.1.1
+
+- **Plain (non-TLS) FTP listings and downloads** no longer fail with `426 Connection closed: The system detected an invalid pointer address...` (broken since v7.9.0; TLS was not affected)
+- **Plain (non-TLS) FTP downloads** now use the same send path as TLS downloads, which fixes:
+  - resumed downloads (`REST`) restarting from byte 0 and producing corrupt files
+  - downloads longer than `Data_Timeout` (default 120 s) being aborted
+  - files of 2 GB or more, and zero-byte files, failing to download
+  - per-user download speed limits not being applied
+  - wrong download CRC, and no live speed in `SITE WHO` during a download
+  - on Windows 10/11 hosts, downloads stalling when more than two ran at once
+- See [Changelog](changelog.md) for details.
+
+### Upgrading to v8.1.1
+
+Drop in the new binary. No configuration changes are required.
+
+---
+
+## Previous Release: v8.1.0
+
+**Release date:** 2026‑06‑29  
+**Download:** https://github.com/Dev00113/ioFTPD/releases/tag/v8.1.0
+
+v8.1.0 added automatic UNC network share management. No configuration changes are required to benefit from health monitoring — UNC shares already in `.vfs` files are monitored automatically.
 
 ### What's New in v8.1.0
 
@@ -135,6 +160,10 @@ Certificate_Type = RSA     ; RSA (default) or ECDSA
 ---
 
 ## Upgrading
+
+### Upgrading to v8.1.1
+
+Drop in the new binary. No configuration changes are required.
 
 ### Upgrading to v8.1.0
 

@@ -10,6 +10,38 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [8.1.1] — TBD
+
+### Fixed
+
+- **Plain (non-TLS) FTP listings and downloads failed with `426`** — every transfer over
+  an unencrypted data connection (`LIST`, `NLST`, `MLSD`, `RETR`) ended with
+  `426 Connection closed: The system detected an invalid pointer address in attempting
+  to use a pointer argument in a call.` The data was sent, but the final half-close step
+  posted a receive with a NULL buffer and failed with `WSAEFAULT`. Present since v7.9.0.
+  TLS (`PROT P`) transfers were not affected.
+
+- **Plain (non-TLS) FTP downloads** — downloads over an unencrypted data connection
+  used a separate send path (`TransmitFile`) from TLS downloads, and that path had
+  several defects. Plain downloads now use the same buffered send loop as TLS
+  downloads, which fixes all of the following:
+
+  - **Resume (`REST`) ignored** — a resumed download was sent again from byte 0
+    instead of the requested offset, leaving the client with a corrupt file.
+  - **Long downloads aborted** — any download taking longer than `Data_Timeout`
+    (default 120 s) was cut off by the data-connection timer.
+  - **Files of 2 GB or more failed** to download.
+  - **Zero-byte files failed** to download and were reported as a closed connection.
+  - **Per-user download speed limits** were not applied.
+  - **Download CRC** was never calculated, so the reported value was wrong.
+  - **`SITE WHO`** showed no transfer speed while a download was in progress.
+  - **Windows 10/11 hosts** allowed only two plain downloads at once system-wide;
+    further downloads stalled until one finished.
+
+  TLS (`PROT P`) transfers and all uploads are unchanged.
+
+---
+
 ## [8.1.0] — 2026-06-29
 
 ### Added
