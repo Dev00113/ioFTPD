@@ -236,7 +236,12 @@ extern LPFN_ACCEPTEX				Accept;
 extern LPFN_GETACCEPTEXSOCKADDRS	GetAcceptSockAddrs;
 
 
-extern BOOL volatile bLogOpenSslErrors;
+// Set by Security_Init (every init/rehash) from [Network] OpenSSL_Debug_Log
+// (legacy alias: Log_OpenSSL_Transfer_Errors).  When FALSE (default) all
+// OpenSSL diagnostic output to Debug.log is suppressed.
+extern BOOL volatile g_bOpenSslDebugLog;
+VOID OpenSslDebugLog(LPCTSTR tszFormat, ...);
+VOID Secure_LogErrorQueue(DWORD dwLogCode, LPCTSTR tszContext);
 extern DWORD dwDeadlockPort;
 
 #ifdef __cplusplus

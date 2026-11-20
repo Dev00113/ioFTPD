@@ -1,7 +1,9 @@
 v8.1.1 Release Notes (TBD):
 
-v8.1.1 is a bug-fix release for plain (non-TLS) FTP listings and downloads.
-TLS (PROT P) transfers are unchanged.  No configuration changes are required.
+v8.1.1 is a bug-fix release for plain (non-TLS) FTP listings and downloads,
+and for OpenSSL logging and certificate generation.  No configuration
+changes are required.  OpenSSL messages are no longer written to Debug.log
+by default; set [Network] OpenSSL_Debug_Log = True to get them back.
 
 *** Files in \System ***
 
@@ -33,6 +35,30 @@ TLS (PROT P) transfers are unchanged.  No configuration changes are required.
    - SITE WHO showed no transfer speed while a download was in progress.
    - On Windows 10/11 hosts only two plain downloads could run at once
      system-wide; further downloads stalled until one finished.
+
+3) New: one switch for all OpenSSL debug logging.
+   [Network] OpenSSL_Debug_Log = True|False (default False).  Previously
+   most OpenSSL diagnostics were written to Debug.log unconditionally and
+   Log_OpenSSL_Transfer_Errors only controlled part of the transfer-error
+   output.  Log_OpenSSL_Transfer_Errors still works as an alias.
+
+4) Fixed: OpenSSL errors from loading a certificate/key or applying cipher
+   or DH settings were left on the thread's error queue and could later
+   appear in the 426 reply of an unrelated failed transfer.  Key, provider
+   and DH failures now log their OpenSSL reason to Error.log.
+
+5) Fixed: services without OpenSSL_SecurityLevel logged "Invalid
+   OpenSSL_SecurityLevel=-1" on every start.  A value that really is invalid
+   is now reported in Error.log.
+
+6) Fixed: startup certificate-generation failures were written to Debug.log
+   instead of Error.log.
+
+7) Fixed: SITE MAKECERT showed no progress while generating an RSA key.
+   RSA generation now also removes the old .pem/.key/.dhp files and verifies
+   the new certificate, as ECDSA generation already did.
+
+8) New OpenSSL_Options values: NO_RENEGOTIATION, IGNORE_UNEXPECTED_EOF.
 
 
 -------------------------------------------------------------------------------

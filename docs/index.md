@@ -36,11 +36,16 @@ v8.1.1 is a bug-fix release for plain (non-TLS) FTP listings and downloads. TLS 
   - per-user download speed limits not being applied
   - wrong download CRC, and no live speed in `SITE WHO` during a download
   - on Windows 10/11 hosts, downloads stalling when more than two ran at once
+- **OpenSSL debug logging** now has one off switch, `[Network] OpenSSL_Debug_Log` (off by default)
+- **OpenSSL errors** from certificate, key or cipher setup no longer show up in an unrelated transfer's `426` reply
+- **`SITE MAKECERT`** shows RSA progress again and removes the old certificate files first
 - See [Changelog](changelog.md) for details.
 
 ### Upgrading to v8.1.1
 
-Drop in the new binary. No configuration changes are required.
+Drop in the new binary. No configuration changes are required. OpenSSL messages are no
+longer written to `Debug.log` by default; set `OpenSSL_Debug_Log = True` under
+`[Network]` to get them back.
 
 ---
 
@@ -157,13 +162,17 @@ Certificate_Type = RSA     ; RSA (default) or ECDSA
 - **RSA 2048‑bit** — maximum compatibility  
 - **ECDSA P‑256** — smaller keys, faster handshakes  
 
+Generating a certificate replaces any existing `.pem`, `.key` and `.dhp` files with
+the same name. Startup generation failures are logged to `Error.log`.
+
 ---
 
 ## Upgrading
 
 ### Upgrading to v8.1.1
 
-Drop in the new binary. No configuration changes are required.
+Drop in the new binary. No configuration changes are required. To keep OpenSSL
+diagnostics in `Debug.log`, set `OpenSSL_Debug_Log = True` under `[Network]`.
 
 ### Upgrading to v8.1.0
 

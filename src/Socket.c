@@ -24,7 +24,6 @@
 
 LPFN_GETACCEPTEXSOCKADDRS GetAcceptSockAddrs;
 LPFN_ACCEPTEX             Accept;
-BOOL volatile             bLogOpenSslErrors;
 DWORD                     dwDeadlockPort;
 SOCKET                    DeadlockSocket;
 
@@ -1246,11 +1245,6 @@ Socket_Init(BOOL bFirstInitialization)
     DWORD           dwThreadID, dwBytes, dwLastError;
     HANDLE          hThread;
     LPTSTR          tszSchedulerUpdateSpeed;
-    BOOL            bLogErrors;
-
-    bLogErrors = FALSE;
-    Config_Get_Bool(&IniConfigFile, _TEXT("Network"), _TEXT("Log_OpenSSL_Transfer_Errors"), &bLogErrors);
-    InterlockedExchange((LONG*)&bLogOpenSslErrors, bLogErrors);
 
     if (!bFirstInitialization) return TRUE;
 

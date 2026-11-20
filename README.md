@@ -333,7 +333,7 @@ The server reads `ioFTPD.ini` (or a path specified on the command line) at start
 |---------|-------------|
 | `[FTP]` | `Idle_TimeOut`, `Login_TimeOut`, `Login_Attempts`, `Transfer_Buffer`, `Socket_Send_Buffer`, `Idle_Exempt`, `Banned_User_Flag`, `Quiet_Login_Flag`, `Long_Path_Support`, `Network_Mounts_File`, `Network_Check_Interval`, `Network_Max_Retry_Interval` |
 | `[Events]` | `OnServerStart`, `OnServerStop`, `OnFtpLogOut`, `OnFtpUpload`, `OnFtpDownload` |
-| `[Network]` | `Log_OpenSSL_Transfer_Errors`, `Scheduler_Update_Speed` |
+| `[Network]` | `OpenSSL_Debug_Log` (alias: `Log_OpenSSL_Transfer_Errors`), `Scheduler_Update_Speed` |
 | `[VFS_PreLoad]` | `DELAY` |
 | `[Services]` | FTP service definitions (port, device binding, TLS settings) |
 

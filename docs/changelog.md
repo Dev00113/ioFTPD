@@ -12,7 +12,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [8.1.1] — TBD
 
+### Added
+
+- **`[Network] OpenSSL_Debug_Log`** — one switch for all OpenSSL diagnostic output to
+  `Debug.log` (default `False`). It covers OpenSSL errors from failed TLS transfers, TLS
+  renegotiation / re-key events, the provider search path, and the per-service
+  `OpenSSL_Groups`, `OpenSSL_SecurityLevel` and DH parameter settings. Previously most
+  of these were written unconditionally. `Log_OpenSSL_Transfer_Errors` still works as an
+  alias. Genuine configuration errors always go to `Error.log`. Re-read on config reload.
+- **New `OpenSSL_Options` values** — `NO_RENEGOTIATION` (refuse client TLS 1.2
+  renegotiation) and `IGNORE_UNEXPECTED_EOF` (treat a TCP close without a TLS
+  `close_notify` as a normal end of transfer instead of an SSL library failure).
+
 ### Fixed
+
+- **OpenSSL errors reported against the wrong transfer** — failures loading a
+  certificate or key, or applying cipher or DH settings, left errors on the thread's
+  OpenSSL error queue. These could later appear in the `426` reply of an unrelated
+  failed transfer. The queue is now always cleared, and key, provider and DH failures
+  log their OpenSSL reason to `Error.log`.
+- **`OpenSSL_SecurityLevel`** — services without the key logged
+  `Invalid OpenSSL_SecurityLevel=-1` on every start. A value that really is invalid
+  (out of range or not a number) is now reported in `Error.log`.
+- **Startup certificate generation** — failures were written to `Debug.log` instead of
+  `Error.log`.
+- **`SITE MAKECERT`** — RSA key generation now shows progress again. RSA generation now
+  also removes the old `.pem` / `.key` / `.dhp` files and verifies the new certificate,
+  as ECDSA generation already did.
 
 - **Plain (non-TLS) FTP listings and downloads failed with `426`** — every transfer over
   an unencrypted data connection (`LIST`, `NLST`, `MLSD`, `RETR`) ended with

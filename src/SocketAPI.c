@@ -158,7 +158,7 @@ VOID TransmitPackages_Continue(LPPACKAGETRANSFER lpTransfer)
 static
 VOID TransmitPackages_Error(LPPACKAGETRANSFER lpTransfer, DWORD dwLastError)
 {
-    CHAR szBuf[512], * szError;
+    CHAR szBuf[512];
     unsigned long err;
     int i;
 
@@ -171,37 +171,30 @@ VOID TransmitPackages_Error(LPPACKAGETRANSFER lpTransfer, DWORD dwLastError)
     lpTransfer->dwLastError = dwLastError;
     if (dwLastError == IO_SSL_FAIL)
     {
-        if (!(lpTransfer->ulOpenSslError = ERR_get_error()))
+        BOOL bDebug = g_bOpenSslDebugLog;
+
+        // First error is kept for the caller (e.g. the 426 reply text).
+        lpTransfer->ulOpenSslError = ERR_get_error();
+        if (bDebug)
         {
-            Putlog(LOG_DEBUG, _T("OpenSSL error: <non-recorded>.\r\n"));
-        }
-        else if (bLogOpenSslErrors)
-        {
-            ERR_error_string_n(lpTransfer->ulOpenSslError, szBuf, sizeof(szBuf));
-            szError = szBuf;
-            if (szError)
+            if (!lpTransfer->ulOpenSslError)
             {
-                Putlog(LOG_DEBUG, _T("OpenSSL error: %s\r\n"), szError);
+                Putlog(LOG_DEBUG, _T("OpenSSL error: <non-recorded>.\r\n"));
             }
             else
             {
-                Putlog(LOG_DEBUG, _T("OpenSSL error: #%d\r\n"), lpTransfer->ulOpenSslError);
+                ERR_error_string_n(lpTransfer->ulOpenSslError, szBuf, sizeof(szBuf));
+                Putlog(LOG_DEBUG, _T("OpenSSL error: %s\r\n"), szBuf);
             }
         }
 
-        // now flush anything left on this threads error queue...
+        // Always flush the rest of this thread's error queue so stale entries can't
+        // be attributed to a later operation; log them only when debugging.
         for (i = 2; (err = ERR_get_error()); i++)
         {
+            if (!bDebug) continue;
             ERR_error_string_n(err, szBuf, sizeof(szBuf));
-            szError = szBuf;
-            if (szError)
-            {
-                Putlog(LOG_DEBUG, _T("OpenSSL error%d: %s\r\n"), i, szError);
-            }
-            else
-            {
-                Putlog(LOG_DEBUG, _T("OpenSSL error%d: #%d\r\n"), i, lpTransfer->ulOpenSslError);
-            }
+            Putlog(LOG_DEBUG, _T("OpenSSL error%d: %s\r\n"), i, szBuf);
         }
     }
     TransmitPackages_Complete(lpTransfer);
@@ -411,9 +404,9 @@ TransmitPackage_ReadSecure(LPPACKAGETRANSFER lpTransfer, DWORD dwBytesRead, DWOR
         // now figure out how many bytes of the stream we actually got (there might by crypto overhead, checksums, etc)
         iNum = SSL_read(lpSecure->SSL, &lpIoBuffer->buf[lpIoBuffer->offset], lpIoBuffer->len - lpIoBuffer->offset);
 
-        if (!SSL_is_init_finished(lpSecure->SSL))
+        if (g_bOpenSslDebugLog && !SSL_is_init_finished(lpSecure->SSL))
         {
-            Putlog(LOG_DEBUG, "SSL/TSL re-negotiation requested.\r\n");
+            Putlog(LOG_DEBUG, _T("SSL/TLS re-negotiation requested (read).\r\n"));
         }
 
         if (iNum > 0)
@@ -442,7 +435,8 @@ TransmitPackage_ReadSecure(LPPACKAGETRANSFER lpTransfer, DWORD dwBytesRead, DWOR
                 // Fix #7: SSL needs to send data (e.g. TLS 1.2 re-key) before we can
                 // continue reading.  Flush whatever SSL_read placed in the write BIO,
                 // then loop back — the next SSL_read call will continue from here.
-                Putlog(LOG_DEBUG, "SSL read wanted to write — flushing write BIO.\r\n");
+                if (g_bOpenSslDebugLog)
+                    Putlog(LOG_DEBUG, _T("SSL read wanted to write - flushing write BIO.\r\n"));
                 {
                     LPSOCKETOVERLAPPED lpSendOv = lpTransfer->bQuick
                         ? &lpSocket->SQ.Overlapped
@@ -662,9 +656,9 @@ TransmitPackage_WriteSecure(LPPACKAGETRANSFER lpTransfer, DWORD dwBytesWritten, 
         // encrypt the buffer so we can write out whatever it spits out into the bio..
         iNum = SSL_write(lpSecure->SSL, &lpIoBuffer->buf[lpIoBuffer->offset], lpIoBuffer->len - lpIoBuffer->offset);
 
-        if (!SSL_is_init_finished(lpSecure->SSL))
+        if (g_bOpenSslDebugLog && !SSL_is_init_finished(lpSecure->SSL))
         {
-            Putlog(LOG_ERROR, "SSL/TSL re-negotiation requested.\r\n");
+            Putlog(LOG_DEBUG, _T("SSL/TLS re-negotiation requested (write).\r\n"));
         }
 
         // Observe pending data in BIO (optional debug)
@@ -691,7 +685,8 @@ TransmitPackage_WriteSecure(LPPACKAGETRANSFER lpTransfer, DWORD dwBytesWritten, 
                 // Fix #7: SSL needs incoming data (e.g. TLS 1.2 re-key response) before
                 // it can encrypt more application data.  Post a receive into the BIO;
                 // the read completion callback will call SSL_write again via WriteSecure.
-                Putlog(LOG_DEBUG, "SSL write wanted to read — posting network receive.\r\n");
+                if (g_bOpenSslDebugLog)
+                    Putlog(LOG_DEBUG, _T("SSL write wanted to read - posting network receive.\r\n"));
                 {
                     // Use Overlapped[0] (the recv slot) — lpOverlapped (send slot)
                     // is not assigned until further below; using it here would be UB.

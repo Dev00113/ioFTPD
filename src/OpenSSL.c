@@ -39,6 +39,40 @@
 static OSSL_PROVIDER *g_pDefaultProvider = NULL;
 static OSSL_PROVIDER *g_pLegacyProvider  = NULL;
 
+// Master switch for OpenSSL diagnostic output to Debug.log (see iosocket.h).
+BOOL volatile g_bOpenSslDebugLog = FALSE;
+
+
+// Write an OpenSSL diagnostic line to Debug.log, only when OpenSSL_Debug_Log is on.
+VOID OpenSslDebugLog(LPCTSTR tszFormat, ...)
+{
+	va_list Arguments;
+
+	if (!g_bOpenSslDebugLog) return;
+
+	va_start(Arguments, tszFormat);
+	PutlogVA(LOG_DEBUG, tszFormat, Arguments);
+	va_end(Arguments);
+}
+
+
+// Drain this thread's OpenSSL error queue into the given log.  Always drains,
+// so stale entries can't be attributed to a later, unrelated TLS operation on
+// the same thread.  LOG_DEBUG output is subject to OpenSSL_Debug_Log.
+VOID Secure_LogErrorQueue(DWORD dwLogCode, LPCTSTR tszContext)
+{
+	unsigned long err;
+	char          szBuf[256];
+	BOOL          bLog = (dwLogCode != LOG_DEBUG) || g_bOpenSslDebugLog;
+
+	while ((err = ERR_get_error()) != 0)
+	{
+		if (!bLog) continue;
+		ERR_error_string_n(err, szBuf, sizeof(szBuf));
+		Putlog(dwLogCode, _T("OpenSSL: %s: %hs\r\n"), tszContext, szBuf);
+	}
+}
+
 typedef struct _OPENSSLPROGRESS
 {
 	LPIOSOCKET lpIoSocket;
@@ -52,12 +86,14 @@ typedef struct _OPENSSLPROGRESS
 } OPENSSLPROGRESS, * LPOPENSSLPROGRESS;
 
 
+// Output sink for startup (non-interactive) cert generation.  Progress dots are
+// disabled there, so everything routed here is failure text — log it as an error.
 VOID MyOpenSSL_PutLog(LPOPENSSLPROGRESS lpProgress, LPSTR szFormat, ...)
 {
 	va_list	Arguments;
 
 	va_start(Arguments, szFormat);
-	PutlogVA(LOG_DEBUG, szFormat, Arguments);
+	PutlogVA(LOG_ERROR, szFormat, Arguments);
 	va_end(Arguments);
 }
 
@@ -72,25 +108,37 @@ VOID MyOpenSSL_Format(LPOPENSSLPROGRESS lpProgress, LPSTR szFormat, ...)
 }
 
 
-int MyOpenSSL_Progress_Callback(int p, int n, BN_GENCB* bn_GenCB)
+// EVP keygen progress callback (OpenSSL 3.x).  Registered only for interactive
+// SITE MAKECERT RSA generation (bShowDots), where it streams progress dots to the
+// client.  keygen_info(0) is the BN_GENCB-style phase: 0 = candidate, 1 = test
+// round, 2 = rejected, 3 = prime found (n = 0 for p, 1 for q).
+static int MyOpenSSL_Progress_Callback(EVP_PKEY_CTX* pCtx)
 {
 	LPOPENSSLPROGRESS lpProgress;
 	LPBUFFER          lpBuffer;
 	TCHAR             tc;
+	int               p, n;
+	BOOL              bDone;
 	VOID(*Out)(struct _OPENSSLPROGRESS* lpProgress, LPTSTR szFormat, ...);
 
-	lpProgress = (LPOPENSSLPROGRESS)BN_GENCB_get_arg(bn_GenCB);
+	lpProgress = (LPOPENSSLPROGRESS)EVP_PKEY_CTX_get_app_data(pCtx);
+	if (!lpProgress || !lpProgress->bShowDots) return 1;
+
+	p = EVP_PKEY_CTX_get_keygen_info(pCtx, 0);
+	n = EVP_PKEY_CTX_get_keygen_info(pCtx, 1);
+	bDone = (p == 3 && n == 1);
+
 	lpBuffer = lpProgress->lpBuffer;
 	Out = lpProgress->OutputFunc;
 
-	if (lpBuffer->len == 0 && lpProgress->bShowDots)
+	// Start of a reply line (buffer may already hold earlier complete lines).
+	if (lpBuffer->len == 0 || lpBuffer->buf[lpBuffer->len - 1] == _T('\n'))
 	{
 		(Out)(lpProgress, _T("%s"), lpProgress->tszPrefix);
 	}
 
-	if (p == 3)
+	if (bDone)
 	{
-		// we're done...
 		(Out)(lpProgress, _T("(DONE)\r\n"));
 	}
 	else
@@ -98,17 +146,13 @@ int MyOpenSSL_Progress_Callback(int p, int n, BN_GENCB* bn_GenCB)
 		tc = _T('*');
 		if (p == 0) tc = _T('.');
 		if (p == 1) tc = _T('+');
-		if (lpProgress->bShowDots)
-		{
-			(Out)(lpProgress, _T("%c"), tc);
-		}
+		(Out)(lpProgress, _T("%c"), tc);
 	}
 
-	// now check to see if got 70 characters on the line so far and if we are finished.
-	// If so flush the buffer and start a new line...
-	if ((lpBuffer->len > 70) || (p == 3))
+	// Flush once the line passes 70 characters, or when finished.
+	if ((lpBuffer->len > 70) || bDone)
 	{
-		if (lpProgress->bShowDots && (p != 3))
+		if (!bDone)
 		{
 			(Out)(lpProgress, _T("\r\n"));
 		}
@@ -171,6 +215,9 @@ BOOL MakeCertECDSA(LPTSTR szCertName, LPOPENSSLPROGRESS lpProgress)
 	BOOL       bReturn = FALSE;
 	errno_t    ferr;
 	VOID(*Out)(struct _OPENSSLPROGRESS*, LPTSTR, ...) = lpProgress->OutputFunc;
+
+	// Start with an empty error queue so only errors from this run are reported.
+	ERR_clear_error();
 
 	// Validate cert name length
 	size_t sLen = _tcslen(szCertName);
@@ -283,20 +330,7 @@ BOOL MakeCertECDSA(LPTSTR szCertName, LPOPENSSLPROGRESS lpProgress)
 
 error:
 	if (!bReturn) {
-		unsigned long err;
-		char abuf[512];
-		while ((err = ERR_get_error()) != 0) {
-			ERR_error_string_n(err, abuf, sizeof(abuf));
-#ifdef UNICODE
-			{
-				TCHAR tbuf[512];
-				MultiByteToWideChar(CP_UTF8, 0, abuf, -1, tbuf, _countof(tbuf));
-				Out(lpProgress, _T("%sOpenSSL: %s\r\n"), lpProgress->tszPrefix, tbuf);
-			}
-#else
-			Out(lpProgress, "%sOpenSSL: %s\r\n", lpProgress->tszPrefix, abuf);
-#endif
-		}
+		MakeCert_LogOpenSSLErrors(lpProgress);
 	}
 	if (pKey) EVP_PKEY_free(pKey);
 	if (pX509) X509_free(pX509);
@@ -319,6 +353,9 @@ BOOL MakeCert(LPTSTR szCertName, LPOPENSSLPROGRESS lpProgress)
 	errno_t    ferr;
 	VOID(*Out)(struct _OPENSSLPROGRESS*, LPTSTR, ...) = lpProgress->OutputFunc;
 
+	// Start with an empty error queue so only errors from this run are reported.
+	ERR_clear_error();
+
 	size_t sLen = _tcslen(szCertName);
 	if (sLen + 5 > _countof(tszFileName)) {
 		Out(lpProgress, _T("%sPath/Filename too long.\r\n"), lpProgress->tszPrefix);
@@ -335,6 +372,13 @@ BOOL MakeCert(LPTSTR szCertName, LPOPENSSLPROGRESS lpProgress)
 		params[1] = OSSL_PARAM_construct_end();
 		EVP_PKEY_CTX* pRSACtx = EVP_PKEY_CTX_new_from_name(NULL, "RSA", NULL);
 		if (!pRSACtx) goto error;
+
+		// Stream progress dots to the client for interactive SITE MAKECERT.
+		if (lpProgress->bShowDots)
+		{
+			EVP_PKEY_CTX_set_app_data(pRSACtx, lpProgress);
+			EVP_PKEY_CTX_set_cb(pRSACtx, MyOpenSSL_Progress_Callback);
+		}
 
 		if (EVP_PKEY_keygen_init(pRSACtx) <= 0 ||
 			EVP_PKEY_CTX_set_params(pRSACtx, params) <= 0 ||
@@ -412,6 +456,13 @@ BOOL MakeCert(LPTSTR szCertName, LPOPENSSLPROGRESS lpProgress)
 	// Sign with RSA + SHA256
 	// ---------------------------------------------------------------------
 	if (!X509_sign(pX509, pKey, EVP_sha256())) goto error;
+	if (!X509_verify(pX509, pKey)) {
+		Out(lpProgress, _T("%sFailed to verify certificate.\r\n"), lpProgress->tszPrefix);
+		goto error;
+	}
+
+	// Delete old cert/key/dhp (same as ECDSA path) so no stale .dhp survives
+	Secure_Delete_Cert(szCertName);
 
 	// ---------------------------------------------------------------------
 	// Write private key
@@ -435,18 +486,7 @@ BOOL MakeCert(LPTSTR szCertName, LPOPENSSLPROGRESS lpProgress)
 
 error:
 	if (!bReturn) {
-		unsigned long err;
-		char abuf[512];
-		while ((err = ERR_get_error()) != 0) {
-			ERR_error_string_n(err, abuf, sizeof(abuf));
-#ifdef UNICODE
-			TCHAR tbuf[512];
-			MultiByteToWideChar(CP_UTF8, 0, abuf, -1, tbuf, _countof(tbuf));
-			Out(lpProgress, _T("%sOpenSSL: %s\r\n"), lpProgress->tszPrefix, tbuf);
-#else
-			Out(lpProgress, "%sOpenSSL: %s\r\n", lpProgress->tszPrefix, abuf);
-#endif
-		}
+		MakeCert_LogOpenSSLErrors(lpProgress);
 	}
 
 	if (pKey) EVP_PKEY_free(pKey);
@@ -779,6 +819,16 @@ LONG GetSslOptionBit(LPTSTR tszOption)
 	{
 		return SSL_OP_CRYPTOPRO_TLSEXT_BUG;
 	}
+	if (!_tcsicmp(tszOption, _T("NO_RENEGOTIATION")))
+	{
+		// Refuse TLS 1.2 renegotiation requests from clients
+		return SSL_OP_NO_RENEGOTIATION;
+	}
+	if (!_tcsicmp(tszOption, _T("IGNORE_UNEXPECTED_EOF")))
+	{
+		// Treat a peer TCP close without close_notify as a clean end of stream
+		return SSL_OP_IGNORE_UNEXPECTED_EOF;
+	}
 	return 0;
 }
 
@@ -802,9 +852,17 @@ BOOL Secure_Create_Ctx(LPTSTR tszService, LPSTR szCertificateName, const SSL_MET
 	}
 	_snprintf_s(szFileName, sizeof(szFileName) / sizeof(*szFileName), _TRUNCATE, "%s.pem", szCertificateName);
 
+	// Start with an empty error queue so failures below report only their own cause.
+	ERR_clear_error();
+
 	pCtx = SSL_CTX_new(Method);
-	if (!pCtx) return TRUE;
-	// Ensure TLSv1.2 and TLSv1.3 are enabled
+	if (!pCtx)
+	{
+		Secure_LogErrorQueue(LOG_ERROR, _T("SSL_CTX_new failed"));
+		return TRUE;
+	}
+	// Allow TLS 1.0 through TLS 1.3 (min is TLS 1.0 for legacy FXP peers;
+	// OpenSSL_SecurityLevel / OpenSSL_Ciphers further restrict what is negotiated)
 	SSL_CTX_set_min_proto_version(pCtx, TLS1_VERSION);
 	SSL_CTX_set_max_proto_version(pCtx, TLS1_3_VERSION);
 
@@ -827,6 +885,7 @@ BOOL Secure_Create_Ctx(LPTSTR tszService, LPSTR szCertificateName, const SSL_MET
 						_T("DHE-RSA / AES-CBC FXP compatibility may be reduced. ")
 						_T("Ensure legacy.dll is present alongside libcrypto-3.dll.\r\n"),
 						tszService);
+					Secure_LogErrorQueue(LOG_ERROR, _T("Loading 'legacy' provider"));
 				}
 				else
 				{
@@ -858,18 +917,20 @@ BOOL Secure_Create_Ctx(LPTSTR tszService, LPSTR szCertificateName, const SSL_MET
 		WideCharToMultiByte(CP_UTF8, 0, tszField, -1, szGroups, sizeof(szGroups), NULL, NULL);
 		if (SSL_CTX_set1_groups_list(pCtx, szGroups) != 1) {
 			Putlog(LOG_ERROR, _T("Invalid OpenSSL_Groups: '%hs'. Falling back to default: '%hs'.\r\n"), szGroups, DEFAULT_GROUPS);
+			ERR_clear_error();
 			SSL_CTX_set1_groups_list(pCtx, DEFAULT_GROUPS);
 		}
 		else {
-			Putlog(LOG_DEBUG, _T("Using OpenSSL_Groups: '%s' for service '%s'.\r\n"), tszField, tszService);
+			OpenSslDebugLog(_T("OpenSSL: Using OpenSSL_Groups: '%s' for service '%s'.\r\n"), tszField, tszService);
 		}
 #else
 		if (SSL_CTX_set1_groups_list(pCtx, tszField) != 1) {
 			Putlog(LOG_ERROR, _T("Invalid OpenSSL_Groups: '%s'. Falling back to default: '%s'.\r\n"), tszField, DEFAULT_GROUPS);
+			ERR_clear_error();
 			SSL_CTX_set1_groups_list(pCtx, DEFAULT_GROUPS);
 		}
 		else {
-			Putlog(LOG_DEBUG, _T("Using OpenSSL_Groups: '%s' for service '%s'.\r\n"), tszField, tszService);
+			OpenSslDebugLog(_T("OpenSSL: Using OpenSSL_Groups: '%s' for service '%s'.\r\n"), tszField, tszService);
 		}
 #endif
 		Free(tszField);
@@ -880,10 +941,12 @@ BOOL Secure_Create_Ctx(LPTSTR tszService, LPSTR szCertificateName, const SSL_MET
 	}
 
 
-	if (!pCtx) return TRUE;
-
+	// Failures here are normal while services.c probes candidate cert names
+	// (Certificate_Name, HOST=, default) — the caller logs found/not found, so the
+	// OpenSSL reason goes to Debug.log.  The queue is always drained regardless.
 	if (!SSL_CTX_use_certificate_chain_file(pCtx, szFileName))
 	{
+		Secure_LogErrorQueue(LOG_DEBUG, _T("Loading certificate chain"));
 		SSL_CTX_free(pCtx);
 		return TRUE;
 	}
@@ -892,12 +955,14 @@ BOOL Secure_Create_Ctx(LPTSTR tszService, LPSTR szCertificateName, const SSL_MET
 
 	if (!SSL_CTX_use_PrivateKey_file(pCtx, szFileName, SSL_FILETYPE_PEM))
 	{
+		Secure_LogErrorQueue(LOG_ERROR, _T("Loading private key"));
 		SSL_CTX_free(pCtx);
 		return TRUE;
 	}
 
 	if (!SSL_CTX_check_private_key(pCtx))
 	{
+		Secure_LogErrorQueue(LOG_ERROR, _T("Private key does not match certificate"));
 		SSL_CTX_free(pCtx);
 		return TRUE;
 	}
@@ -938,43 +1003,46 @@ BOOL Secure_Create_Ctx(LPTSTR tszService, LPSTR szCertificateName, const SSL_MET
 		tszOption = _T("DEFAULT:!LOW:!EXPORT");
 	}
 
-	// Read security level from ini; -1 means not configured (validated below)
-	int secLevel = -1;
-	Config_Get_Int(&IniConfigFile, tszService, _T("OpenSSL_SecurityLevel"), &secLevel);
-
-	// Validate
-	if (secLevel < 0 || secLevel > 2)
+	// Security level: 0 (max compatibility, default) | 1 (OpenSSL default) | 2 (strict).
 	{
-		Putlog(LOG_DEBUG,
-			_T("OpenSSL: Invalid OpenSSL_SecurityLevel=%d in [%s]. Using default=0 (compatibility mode).\r\n"),
-			secLevel, tszService);
+		static const LPCTSTR tszLevelDesc[] = {
+			_T("maximum compatibility"), _T("OpenSSL default"), _T("strict modern TLS")
+		};
+		int    secLevel = 0;
+		LPTSTR tszRaw;
 
-		secLevel = 0;
+		if (Config_Get_Int(&IniConfigFile, tszService, _T("OpenSSL_SecurityLevel"), &secLevel))
+		{
+			// Missing, or present but not a number
+			if ((tszRaw = Config_Get(&IniConfigFile, tszService, _T("OpenSSL_SecurityLevel"), NULL, NULL)))
+			{
+				Putlog(LOG_ERROR,
+					_T("OpenSSL: Invalid OpenSSL_SecurityLevel='%s' in [%s]. Using 0 (compatibility mode).\r\n"),
+					tszRaw, tszService);
+				Free(tszRaw);
+			}
+			else
+			{
+				OpenSslDebugLog(_T("OpenSSL: OpenSSL_SecurityLevel not set in [%s]. Using 0 (maximum compatibility).\r\n"),
+					tszService);
+			}
+			secLevel = 0;
+		}
+		else if (secLevel < 0 || secLevel > 2)
+		{
+			Putlog(LOG_ERROR,
+				_T("OpenSSL: Invalid OpenSSL_SecurityLevel=%d in [%s] (valid: 0-2). Using 0 (compatibility mode).\r\n"),
+				secLevel, tszService);
+			secLevel = 0;
+		}
+		else
+		{
+			OpenSslDebugLog(_T("OpenSSL: Using OpenSSL_SecurityLevel=%d (%s) from [%s].\r\n"),
+				secLevel, tszLevelDesc[secLevel], tszService);
+		}
+
+		SSL_CTX_set_security_level(pCtx, secLevel);
 	}
-	else
-	{
-		Putlog(LOG_DEBUG,
-			_T("OpenSSL: Using OpenSSL_SecurityLevel=%d from [%s].\r\n"),
-			secLevel, tszService);
-	}
-
-	// Put friendly log message about security level
-	switch (secLevel)
-	{
-	case 0:
-		Putlog(LOG_DEBUG, _T("OpenSSL: SecurityLevel=0 (maximum compatibility).\r\n"));
-		break;
-	case 1:
-		Putlog(LOG_DEBUG, _T("OpenSSL: SecurityLevel=1 (OpenSSL default).\r\n"));
-		break;
-	case 2:
-		Putlog(LOG_DEBUG, _T("OpenSSL: SecurityLevel=2 (strict modern TLS).\r\n"));
-		break;
-	}
-
-	// Apply
-	SSL_CTX_set_security_level(pCtx, secLevel);
-
 
 	// TLS 1.0–1.2 cipher list  (OpenSSL_Ciphers in service section)
 	if (!SSL_CTX_set_cipher_list(pCtx, tszOption))
@@ -982,6 +1050,7 @@ BOOL Secure_Create_Ctx(LPTSTR tszService, LPSTR szCertificateName, const SSL_MET
 		Putlog(LOG_ERROR,
 			_T("No valid TLS 1.2 ciphers selected via OpenSSL_Ciphers for service '%s'.\r\n"),
 			tszService);
+		Secure_LogErrorQueue(LOG_DEBUG, _T("OpenSSL_Ciphers"));
 	}
 	if (tszField) { Free(tszField); tszField = NULL; }
 
@@ -1002,6 +1071,7 @@ BOOL Secure_Create_Ctx(LPTSTR tszService, LPSTR szCertificateName, const SSL_MET
 			Putlog(LOG_ERROR,
 				_T("No valid TLS 1.3 ciphersuites in OpenSSL_Ciphers13 for service '%s'.\r\n"),
 				tszService);
+			Secure_LogErrorQueue(LOG_DEBUG, _T("OpenSSL_Ciphers13"));
 		}
 		Free(tszField); tszField = NULL;
 	}
@@ -1026,11 +1096,12 @@ BOOL Secure_Create_Ctx(LPTSTR tszService, LPSTR szCertificateName, const SSL_MET
 					Putlog(LOG_ERROR,
 						_T("SSL: Failed to apply DH params for cert '%hs'. DHE ciphers may be unavailable.\r\n"),
 						szCertificateName);
+					Secure_LogErrorQueue(LOG_ERROR, _T("Applying DH params"));
 					EVP_PKEY_free(pDHPKey);
 				}
 				else
 				{
-					Putlog(LOG_DEBUG, _T("SSL: Loaded DH params from '%hs'.\r\n"), szFileName);
+					OpenSslDebugLog(_T("SSL: Loaded DH params from '%hs'.\r\n"), szFileName);
 					// Ownership of pDHPKey transferred to pCtx on success — do not free.
 				}
 			}
@@ -1039,6 +1110,7 @@ BOOL Secure_Create_Ctx(LPTSTR tszService, LPSTR szCertificateName, const SSL_MET
 				Putlog(LOG_ERROR,
 					_T("SSL: Invalid or unreadable DH param file '%hs'. DHE ciphers disabled.\r\n"),
 					szFileName);
+				Secure_LogErrorQueue(LOG_ERROR, _T("Decoding DH params"));
 				if (pDHPKey) EVP_PKEY_free(pDHPKey);
 			}
 
@@ -1241,6 +1313,15 @@ LPTSTR Admin_Ciphers(LPFTPUSER lpUser, LPTSTR tszMultilinePrefix, LPIO_STRING Ar
 
 BOOL Security_Init(BOOL bFirstInitialization)
 {
+	// OpenSSL diagnostic logging switch — read on every init/rehash.
+	// Log_OpenSSL_Transfer_Errors is the pre-8.x name, kept as an alias.
+	{
+		BOOL bDebug = FALSE, bLegacyKey = FALSE;
+		Config_Get_Bool(&IniConfigFile, _T("Network"), _T("OpenSSL_Debug_Log"), &bDebug);
+		Config_Get_Bool(&IniConfigFile, _T("Network"), _T("Log_OpenSSL_Transfer_Errors"), &bLegacyKey);
+		InterlockedExchange((LONG*)&g_bOpenSslDebugLog, (bDebug || bLegacyKey) ? TRUE : FALSE);
+	}
+
 	if (!bFirstInitialization) return TRUE;
 
 	// Override the compiled-in MODULESDIR with a path relative to this executable.
@@ -1259,7 +1340,7 @@ BOOL Security_Init(BOOL bFirstInitialization)
 				size_t remaining = sizeof(szModulesDir) - (size_t)(pSlash + 1 - szModulesDir);
 				strcpy_s(pSlash + 1, remaining, "lib\\ossl-modules");
 				OSSL_PROVIDER_set_default_search_path(NULL, szModulesDir);
-				Putlog(LOG_DEBUG, _T("OpenSSL: Provider search path set to '%hs'.\r\n"), szModulesDir);
+				OpenSslDebugLog(_T("OpenSSL: Provider search path set to '%hs'.\r\n"), szModulesDir);
 			}
 		}
 	}
@@ -1271,6 +1352,7 @@ BOOL Security_Init(BOOL bFirstInitialization)
 	if (!g_pDefaultProvider)
 	{
 		Putlog(LOG_ERROR, _T("OpenSSL: Failed to load 'default' provider. TLS will not work.\r\n"));
+		Secure_LogErrorQueue(LOG_ERROR, _T("Loading 'default' provider"));
 		return FALSE;
 	}
 	Putlog(LOG_GENERAL, _T("OpenSSL: Loaded 'default' provider.\r\n"));
